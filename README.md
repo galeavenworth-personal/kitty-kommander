@@ -1,6 +1,10 @@
-# kitty-kommander
+<p align="center">
+  <img src="kitty-kommander-logo.png" width="240" alt="kitty-kommander — a white cat at a terminal cockpit console" />
+</p>
 
-**GPU-rendered terminal cockpit for driving Claude Code Agent Teams.**
+<h1 align="center">kitty-kommander</h1>
+
+<p align="center"><strong>GPU-rendered terminal cockpit for driving Claude Code Agent Teams.</strong></p>
 
 Kitty terminal + tmux + beads issue tracker + graphviz, wired together into a
 four-tab cockpit purpose-built for running Claude Code agent swarms. You get a
