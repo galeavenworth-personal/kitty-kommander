@@ -1,0 +1,22 @@
+# Launch from your project directory: kitty --session path/to/kommander.kitty-session
+
+# Tab 1: Cockpit — tmux Agent Teams canvas
+new_tab Cockpit
+layout tall
+launch tmux new-session -A -s cockpit
+focus
+
+# Tab 2: Files
+new_tab Files
+launch bash
+
+# Tab 3: Notebooks
+new_tab Notebooks
+launch euporie notebook
+
+# Tab 4: Dashboard — beads DAG + project health
+new_tab Dashboard
+layout splits
+launch --title "Dependency DAG" python3 scripts/cockpit_dash.py --dag
+launch --location=vsplit --title "Project State" python3 scripts/cockpit_dash.py --sidebar
+resize_window narrower 10
