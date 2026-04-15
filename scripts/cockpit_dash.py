@@ -15,6 +15,7 @@ import subprocess
 import sys
 import time
 from datetime import datetime
+from pathlib import Path
 
 # --- Tokyo Night Palette ---
 PAL = {
@@ -24,6 +25,12 @@ PAL = {
 }
 
 TIMG = "/usr/bin/timg"
+
+# Resolve project and sprite directories
+SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_DIR = SCRIPT_DIR.parent
+SPRITE_DIR = REPO_DIR / "sprites" / "nodes"
+
 PROJECT_DIR = os.environ.get(
     "KITTY_KOMMANDER_DIR",
     os.getcwd(),
@@ -79,6 +86,22 @@ def term_size():
     return shutil.get_terminal_size((120, 40))
 
 
+# ── Sprite Support ───────────────────────────────────────────────────────────
+
+def sprite_path(state):
+    """Return absolute path to yarn ball sprite for a state, or None."""
+    p = SPRITE_DIR / f"yarn_{state}.png"
+    return str(p) if p.exists() else None
+
+
+def has_sprites():
+    """Check if yarn ball sprites are available."""
+    return all(
+        (SPRITE_DIR / f"yarn_{s}.png").exists()
+        for s in ("ready", "blocked", "wip", "open")
+    )
+
+
 # ── DAG Rendering ─────────────────────────────────────────────────────────────
 
 def render_dag():
@@ -122,33 +145,73 @@ def render_dag():
         sys.stdout.flush()
         return
 
+    use_sprites = has_sprites()
+
     # Generate DOT
     fill_map = {
         "blocked": PAL["red"], "ready": PAL["green"],
         "wip": PAL["yellow"], "open": PAL["grey"],
     }
 
+    # Edge color: yarn strand in accent blue, fading to dark
+    edge_color = f"{PAL['accent']}:{PAL['dark']}"
+
     dot = [
         "digraph G {",
-        f'  graph [bgcolor="{PAL["bg"]}", pad="1.0", nodesep="0.8",'
-        f' ranksep="1.5", fontname="Noto Sans Mono", rankdir="TB"];',
-        f'  node [shape="box", style="filled,rounded", fontname="Noto Sans Mono",'
-        f' fontsize="10", penwidth="1.5", margin="0.3,0.2"];',
-        f'  edge [color="{PAL["accent"]}", penwidth="1.5", arrowsize="0.8"];',
+        f'  graph [bgcolor="{PAL["bg"]}", pad="0.8", nodesep="1.0",'
+        f' ranksep="1.8", fontname="Noto Sans Mono", rankdir="TB",'
+        f' splines="curved"];',
     ]
+
+    if use_sprites:
+        # Image-based yarn ball nodes
+        dot.append(
+            f'  node [shape="none", fontname="Noto Sans Mono",'
+            f' fontsize="9", fontcolor="{PAL["fg"]}", labelloc="b",'
+            f' imagepos="tc", imagescale="true", fixedsize="true",'
+            f' width="1.0", height="1.3"];'
+        )
+    else:
+        # Fallback: styled circles (yarn ball aesthetic without sprites)
+        dot.append(
+            f'  node [shape="circle", style="filled", fontname="Noto Sans Mono",'
+            f' fontsize="9", penwidth="2.0", fixedsize="true",'
+            f' width="0.9", height="0.9"];'
+        )
+
+    dot.append(
+        f'  edge [color="{edge_color}", penwidth="2.5",'
+        f' arrowsize="0.6", arrowhead="vee"];'
+    )
 
     for nid, node in nodes.items():
         fill = fill_map.get(node["state"], PAL["grey"])
         fc = PAL["bg"] if node["state"] in ("ready", "blocked", "wip") else PAL["fg"]
         label = node["label"].replace('"', '\\"')
-        if node["state"] == "wip":
+
+        sp = sprite_path(node["state"]) if use_sprites else None
+
+        if sp:
+            # Yarn ball sprite node
+            extra = ""
+            if node["state"] == "wip":
+                extra = f', penwidth="3.0", color="{PAL["fg"]}"'
             dot.append(
-                f'  "{nid}" [label="{label}", fillcolor="{fill}",'
-                f' fontcolor="{fc}", penwidth="4.0",'
-                f' style="filled,rounded,dashed", color="{PAL["fg"]}"];'
+                f'  "{nid}" [image="{sp}", label="{label}"{extra}];'
             )
         else:
-            dot.append(f'  "{nid}" [label="{label}", fillcolor="{fill}", fontcolor="{fc}"];')
+            # Fallback styled circle
+            if node["state"] == "wip":
+                dot.append(
+                    f'  "{nid}" [label="{label}", fillcolor="{fill}",'
+                    f' fontcolor="{fc}", penwidth="4.0",'
+                    f' style="filled,dashed", color="{PAL["fg"]}"];'
+                )
+            else:
+                dot.append(
+                    f'  "{nid}" [label="{label}", fillcolor="{fill}",'
+                    f' fontcolor="{fc}"];'
+                )
 
     for src, dst in edges:
         dot.append(f'  "{src}" -> "{dst}";')

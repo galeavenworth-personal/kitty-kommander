@@ -87,18 +87,29 @@ Installed to `~/.claude/skills/` as symlinks.
 
 ## Cell Leader
 
-The ICA (Intent Cell Architecture) cell-leader is a subagent definition at
-`subagents/cell-leader.md`. It implements a small-unit leadership model:
+The ICA (Intent Cell Architecture) cell-leader is an agent definition at
+`.claude/agents/cell-leader.md`. It implements a small-unit leadership model
+using Claude Code Agent Teams:
 
 - Receives intent from the driver (you or a parent agent)
-- Organizes up to four specialist teammates
+- Spawns up to four specialist teammates via the `Agent` tool
 - Issues bounded orders with mission, purpose, constraints, and expected output
-- Maintains team state and integrates all outputs into one coherent result
-- Uses beads for task tracking — every agent gets a tracked work item
-- Uses kitty panes for visibility — every agent gets a visible terminal
+- Tracks work via beads' three-tier model (Proto/Mol/Wisp)
+- Prevents file conflicts with `bd reserve` and coordinates via `SendMessage`
+- Integrates all outputs into one coherent result
 
 The cell-leader is not a router. It interprets, plans, delegates, supervises,
 and accounts for the outcome.
+
+## Three-Tier Work Model
+
+Work follows beads' chemistry metaphor:
+
+| Tier | Phase | Purpose |
+|------|-------|---------|
+| **Proto** (Solid) | Formula template | Reusable workflow patterns — the playbook |
+| **Mol** (Liquid) | Persistent work graph | Tracked epics with subtasks — the mission |
+| **Wisp** (Vapor) | Ephemeral operation | Individual agent task execution — squashed when done |
 
 ## Tokyo Night
 

@@ -59,21 +59,21 @@ kitty @ --to "$KITTY_LISTEN_ON" launch --type=window --title "Monitor" htop
 
 ## tmux Pane Management
 
-The cockpit's first tab runs tmux session "cockpit". Agent Teams creates panes within it.
+The cockpit's first tab runs a tmux session named `$KITTY_KOMMANDER_SESSION` (e.g. `cockpit-my-app`). This allows parallel instances on different projects. Always use the env var — never hardcode the session name.
 
 ### List tmux panes
 ```bash
-tmux list-panes -t cockpit -F "#{pane_index}: #{pane_current_command} (#{pane_width}x#{pane_height})"
+tmux list-panes -t "$KITTY_KOMMANDER_SESSION" -F "#{pane_index}: #{pane_current_command} (#{pane_width}x#{pane_height})"
 ```
 
 ### Send keys to a tmux pane
 ```bash
-tmux send-keys -t cockpit.0 "echo hello" Enter
+tmux send-keys -t "$KITTY_KOMMANDER_SESSION.0" "echo hello" Enter
 ```
 
 ### Navigate tmux panes
 ```bash
-tmux select-pane -t cockpit.0    # Select pane by index
+tmux select-pane -t "$KITTY_KOMMANDER_SESSION.0"    # Select pane by index
 # Or use Alt+1..4 keybinds (configured in tmux.conf)
 ```
 
@@ -81,9 +81,9 @@ tmux select-pane -t cockpit.0    # Select pane by index
 
 ### Launch cockpit
 ```bash
-kitty --session ~/.config/kitty/sessions/actuator.kitty-session
+kitty-kommander /path/to/project
 ```
-Or press F7 then A if already in Kitty (keybind configured in kitty.conf).
+Or press F7 then A if already in Kitty (launches for current working directory).
 
 ### Save current session state
 Press F7 then S (keybind configured in kitty.conf).
@@ -94,21 +94,22 @@ Press F7 then S (keybind configured in kitty.conf).
 kitty @ --to "$KITTY_LISTEN_ON" ls > /dev/null 2>&1 && echo "kitty: ok" || echo "kitty: no socket"
 
 # tmux session alive?
-tmux has-session -t cockpit 2>/dev/null && echo "tmux: ok" || echo "tmux: no session"
+tmux has-session -t "$KITTY_KOMMANDER_SESSION" 2>/dev/null && echo "tmux: ok" || echo "tmux: no session"
 ```
 
 ## Tab Layout Reference
 
 | Index | Name | Purpose |
 |-------|------|---------|
-| 0 | Cockpit | tmux session "cockpit" — Agent Teams canvas |
-| 1 | Files | File browser (bash) |
+| 0 | Cockpit | tmux session `$KITTY_KOMMANDER_SESSION` — Agent Teams canvas |
+| 1 | Driver | Claude Code cell-leader session |
 | 2 | Notebooks | euporie notebook editor |
-| 3 | Logs | Event stream + git log |
+| 3 | Dashboard | beads DAG + project health |
 
 ## Guidelines
-- Always use `$KITTY_LISTEN_ON` for the socket path — never hardcode
+- Always use `$KITTY_LISTEN_ON` for the kitty socket path — never hardcode
+- Always use `$KITTY_KOMMANDER_SESSION` for the tmux session name — never hardcode `cockpit`
 - The `--match` flag uses kitty's matching syntax: `title:`, `index:`, `id:`, `env:`
 - When sending text, always append `\n` to execute the command
 - For long-running commands in panes, check if the pane is busy before sending
-- The tmux session name is always "cockpit" (created by the session file with `-A -s cockpit`)
+- Multiple kitty-kommander instances can run in parallel (one per project directory)

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=kitty-kommander
+GenericName=Terminal Cockpit
+Comment=Launch kitty-kommander cockpit in this directory
+Exec=kitty-kommander %f
+Icon=kitty
+Terminal=false
+Categories=System;TerminalEmulator;
+MimeType=inode/directory;
+StartupNotify=true
+NoDisplay=true

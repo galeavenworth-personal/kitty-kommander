@@ -1,14 +1,16 @@
-# Launch from your project directory: kitty --session path/to/kommander.kitty-session
+# Launch via: kitty-kommander /path/to/project
+# Or: scripts/launch-cockpit.sh /path/to/project
+# KITTY_KOMMANDER_SESSION is set by launch-cockpit.sh for per-instance tmux sessions.
 
 # Tab 1: Cockpit — tmux Agent Teams canvas
 new_tab Cockpit
 layout tall
-launch tmux new-session -A -s cockpit
-focus
+launch sh -c 'tmux new-session -A -s "${KITTY_KOMMANDER_SESSION:-cockpit}"'
 
-# Tab 2: Files
-new_tab Files
-launch bash
+# Tab 2: Driver — Claude Code cell-leader session
+new_tab Driver
+launch scripts/launch-claude.sh
+focus
 
 # Tab 3: Notebooks
 new_tab Notebooks
