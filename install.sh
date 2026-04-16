@@ -134,6 +134,11 @@ fi
 chmod +x "$SCRIPT_DIR/scripts/launch-cockpit.sh" 2>/dev/null && ok "launch-cockpit.sh" || true
 chmod +x "$SCRIPT_DIR/scripts/launch-claude.sh" 2>/dev/null && ok "launch-claude.sh" || true
 
+# Symlink inspector kitten (enables 'kitty +kitten inspector <subcommand>')
+KITTEN_DIR="$HOME/.config/kitty"
+mkdir -p "$KITTEN_DIR"
+symlink "$SCRIPT_DIR/kittens/inspector" "$KITTEN_DIR/inspector"
+
 # Symlink CLI entry point to ~/.local/bin (enables parallel instance support)
 LOCAL_BIN="$HOME/.local/bin"
 mkdir -p "$LOCAL_BIN"

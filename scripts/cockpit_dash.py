@@ -104,12 +104,27 @@ def has_sprites():
 
 # ── DAG Rendering ─────────────────────────────────────────────────────────────
 
-def render_dag():
-    blocked = bd(["blocked"])
-    ready = bd(["ready", "-n", "100"])
-    all_open = bd(["list", "--status=open", "-n", "100"])
-    wip = bd(["list", "--status=in_progress", "-n", "100"])
+def build_dag_dot(blocked, ready, all_open, wip):
+    """Generate Graphviz DOT string from beads issue data.
 
+    Pure function — no I/O, no subprocess calls.
+
+    Parameters
+    ----------
+    blocked : list[dict]
+        Issues from bd blocked (each has 'id', 'title', 'blocked_by').
+    ready : list[dict]
+        Issues from bd ready (each has 'id').
+    all_open : list[dict]
+        Issues from bd list --status=open (each has 'id', 'title').
+    wip : list[dict]
+        Issues from bd list --status=in_progress (each has 'id').
+
+    Returns
+    -------
+    str or None
+        DOT string for graphviz, or None if no dependency chains exist.
+    """
     ready_ids = {r["id"] for r in ready}
     wip_ids = {r["id"] for r in wip}
     title_map = {i["id"]: i.get("title", "") for i in all_open + wip}
@@ -140,10 +155,7 @@ def render_dag():
                 nodes[blocker_id] = {"label": f"{b_sid}: {b_title}", "state": state}
 
     if not nodes:
-        sys.stdout.write(CLR)
-        print(f"\n  {C_GREEN}No dependency chains — all issues independent.{RST}")
-        sys.stdout.flush()
-        return
+        return None
 
     use_sprites = has_sprites()
 
@@ -217,7 +229,22 @@ def render_dag():
         dot.append(f'  "{src}" -> "{dst}";')
 
     dot.append("}")
-    dot_str = "\n".join(dot)
+    return "\n".join(dot)
+
+
+def render_dag():
+    blocked = bd(["blocked"])
+    ready = bd(["ready", "-n", "100"])
+    all_open = bd(["list", "--status=open", "-n", "100"])
+    wip = bd(["list", "--status=in_progress", "-n", "100"])
+
+    dot_str = build_dag_dot(blocked, ready, all_open, wip)
+
+    if dot_str is None:
+        sys.stdout.write(CLR)
+        print(f"\n  {C_GREEN}No dependency chains — all issues independent.{RST}")
+        sys.stdout.flush()
+        return
 
     # Render: dot → PNG pipe → timg
     cols, rows = term_size()
