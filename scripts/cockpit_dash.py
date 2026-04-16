@@ -26,6 +26,15 @@ from dash_data import (
     get_mutations,
     git_log,
 )
+from helm_data import (
+    build_helm_dot,
+    build_helm_status_text,
+    build_federation_footer,
+    get_cell_topology,
+    get_cell_status,
+    get_cross_cell_gates,
+    get_cell_mutations,
+)
 
 # ── ANSI Helpers ──────────────────────────────────────────────────────────────
 
@@ -191,6 +200,169 @@ def capture_dag(output_path, project_dir=None):
         return None
 
 
+# ── Helm Rendering ───────────────────────────────────────────────────────────
+
+def render_helm_topology():
+    """Fetch cell topology, render DOT graph via dot → timg, print footer."""
+    cells = get_cell_topology()
+
+    if not cells:
+        sys.stdout.write(CLR)
+        print(f"\n  {C_GREEN}Single-cell mode — no sub-cells deployed."
+              f" Use cell-spawn.sh to deploy a sub-cell.{RST}")
+        sys.stdout.flush()
+        return
+
+    # Build edges from parent fields (build_helm_dot does this internally,
+    # but we pass None to let it handle it)
+    dot_str = build_helm_dot(cells)
+
+    if dot_str is None:
+        sys.stdout.write(CLR)
+        print(f"\n  {C_GREEN}No cell topology to render.{RST}")
+        sys.stdout.flush()
+        return
+
+    cols, rows = term_size()
+    gw = min(cols, 180)
+    gh = min(rows - 6, 50)  # Leave room for federation footer
+
+    try:
+        dot_proc = subprocess.Popen(
+            ["dot", "-Tpng", "-Gdpi=150"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        )
+        png, _ = dot_proc.communicate(dot_str.encode(), timeout=10)
+
+        if dot_proc.returncode != 0 or not png:
+            sys.stdout.write(CLR)
+            print(f"\n  {C_RED}graphviz error (exit {dot_proc.returncode}){RST}")
+            sys.stdout.flush()
+            return
+
+        sys.stdout.write(CLR)
+        sys.stdout.flush()
+
+        timg_proc = subprocess.Popen(
+            [TIMG, "--clear", "--center", "-g", f"{gw}x{gh}", "-p", "kitty", "-"],
+            stdin=subprocess.PIPE, stderr=subprocess.PIPE,
+        )
+        timg_proc.communicate(png, timeout=10)
+
+    except Exception as e:
+        sys.stdout.write(CLR)
+        print(f"\n  {C_RED}Render error: {e}{RST}")
+        sys.stdout.flush()
+        return
+
+    # Print federation sync footer below graph
+    footer = build_federation_footer(cells)
+    if footer:
+        print(footer)
+    sys.stdout.flush()
+
+
+def render_helm_status():
+    """Fetch cell status, gates, mutations and print status text."""
+    cells = get_cell_status()
+    gates = get_cross_cell_gates()
+    mutations = get_cell_mutations()
+
+    cols, _ = term_size()
+    bar_w = min(cols - 6, 50)
+
+    text = build_helm_status_text(
+        cells=cells,
+        gates=gates,
+        mutations=mutations,
+        bar_width=bar_w,
+    )
+
+    sys.stdout.write(CLR)
+    print(text)
+
+    now = datetime.now().strftime("%H:%M:%S")
+    print(f"\n  {DIM}{C_GREY}Updated {now}  •  30s refresh{RST}")
+    sys.stdout.flush()
+
+
+# ── Helm Capture ─────────────────────────────────────────────────────────────
+
+def capture_helm_topology(output_path, project_dir=None):
+    """Render the helm topology to a PNG file (no terminal, no timg).
+
+    Parameters
+    ----------
+    output_path : str
+        Destination PNG file path.
+    project_dir : str, optional
+        Override project directory for data fetching.
+
+    Returns
+    -------
+    str or None
+        The output path on success, None if no cells exist.
+    """
+    cells = get_cell_topology(project_dir=project_dir)
+    if not cells:
+        return None
+
+    dot_str = build_helm_dot(cells)
+    if dot_str is None:
+        return None
+
+    try:
+        dot_proc = subprocess.Popen(
+            ["dot", "-Tpng", "-Gdpi=150"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        )
+        png, _ = dot_proc.communicate(dot_str.encode(), timeout=10)
+        if dot_proc.returncode != 0 or not png:
+            return None
+
+        with open(output_path, "wb") as f:
+            f.write(png)
+        return output_path
+
+    except Exception:
+        return None
+
+
+def capture_helm_status(output_path=None, project_dir=None):
+    """Capture the helm status text (stripped of ANSI codes if saving to file).
+
+    Parameters
+    ----------
+    output_path : str, optional
+        If given, write raw text to file. Otherwise return the ANSI string.
+    project_dir : str, optional
+        Override project directory for data fetching.
+
+    Returns
+    -------
+    str
+        The status text (with ANSI codes if no output_path, stripped if saved).
+    """
+    import re
+
+    cells = get_cell_status(project_dir=project_dir)
+    gates = get_cross_cell_gates(project_dir=project_dir)
+    mutations = get_cell_mutations(project_dir=project_dir)
+
+    text = build_helm_status_text(
+        cells=cells, gates=gates, mutations=mutations, bar_width=50,
+    )
+
+    if output_path:
+        stripped = re.sub(r"\033\[[0-9;]*m", "", text)
+        with open(output_path, "w") as f:
+            f.write(stripped)
+
+    return text
+
+
+# ── Sidebar Capture ──────────────────────────────────────────────────────────
+
 def capture_sidebar(output_path=None, project_dir=None):
     """Capture the sidebar text (stripped of ANSI codes if saving to file).
 
@@ -229,11 +401,20 @@ def capture_sidebar(output_path=None, project_dir=None):
 
 
 def main():
+    USAGE = (
+        "Usage: cockpit_dash.py [--dag | --sidebar | --helm-topology | --helm-status"
+        " | --capture-dag FILE | --capture-sidebar FILE"
+        " | --capture-helm-topology FILE | --capture-helm-status FILE]"
+    )
+
     if len(sys.argv) < 2:
-        print("Usage: cockpit_dash.py [--dag | --sidebar | --capture-dag FILE | --capture-sidebar FILE]")
+        print(USAGE)
         sys.exit(1)
 
-    if sys.argv[1] == "--capture-dag":
+    arg = sys.argv[1]
+
+    # ── One-shot capture modes ──
+    if arg == "--capture-dag":
         path = sys.argv[2] if len(sys.argv) > 2 else "test-artifacts/dag_capture.png"
         project = sys.argv[3] if len(sys.argv) > 3 else None
         result = capture_dag(path, project_dir=project)
@@ -243,18 +424,42 @@ def main():
             print("No dependency chains to render.")
         return
 
-    if sys.argv[1] == "--capture-sidebar":
+    if arg == "--capture-sidebar":
         path = sys.argv[2] if len(sys.argv) > 2 else "test-artifacts/sidebar_capture.txt"
         project = sys.argv[3] if len(sys.argv) > 3 else None
         capture_sidebar(path, project_dir=project)
         print(f"Sidebar captured: {path}")
         return
 
-    if sys.argv[1] not in ("--dag", "--sidebar"):
-        print("Usage: cockpit_dash.py [--dag | --sidebar | --capture-dag FILE | --capture-sidebar FILE]")
-        sys.exit(1)
+    if arg == "--capture-helm-topology":
+        path = sys.argv[2] if len(sys.argv) > 2 else "test-artifacts/helm_topology.png"
+        project = sys.argv[3] if len(sys.argv) > 3 else None
+        result = capture_helm_topology(path, project_dir=project)
+        if result:
+            print(f"Helm topology captured: {result}")
+        else:
+            print("No cells to render (single-cell mode).")
+        return
 
-    render = render_dag if sys.argv[1] == "--dag" else render_sidebar
+    if arg == "--capture-helm-status":
+        path = sys.argv[2] if len(sys.argv) > 2 else "test-artifacts/helm_status.txt"
+        project = sys.argv[3] if len(sys.argv) > 3 else None
+        capture_helm_status(path, project_dir=project)
+        print(f"Helm status captured: {path}")
+        return
+
+    # ── Auto-refresh render modes ──
+    render_modes = {
+        "--dag": render_dag,
+        "--sidebar": render_sidebar,
+        "--helm-topology": render_helm_topology,
+        "--helm-status": render_helm_status,
+    }
+
+    render = render_modes.get(arg)
+    if render is None:
+        print(USAGE)
+        sys.exit(1)
 
     try:
         while True:

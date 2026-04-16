@@ -13,6 +13,8 @@
 # Non-zero exit on any failure; launched instance is killed if federation fails.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -129,6 +131,19 @@ if ! (cd "$PROJECT_DIR" && bd federation add-peer parent "file://${PARENT_DIR}/.
     die "Federation peer registration failed (sub-cell -> parent)."
 fi
 log "Registered peer in sub-cell: parent -> file://${PARENT_DIR}/.beads"
+
+# ---------------------------------------------------------------------------
+# Auto-launch Helm tab on first sub-cell
+# ---------------------------------------------------------------------------
+
+if [[ -n "${KITTY_LISTEN_ON:-}" ]]; then
+    log "Checking if Helm tab needs launching..."
+    if "${SCRIPT_DIR}/helm-launch.sh" 2>&1 | while read -r line; do log "$line"; done; then
+        log "Helm tab ready."
+    else
+        log "Warning: Helm tab launch failed (non-fatal)."
+    fi
+fi
 
 # ---------------------------------------------------------------------------
 # Success — output JSON metadata

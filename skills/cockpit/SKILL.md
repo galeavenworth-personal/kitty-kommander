@@ -1,6 +1,6 @@
 ---
 name: cockpit
-description: This skill should be used when managing the Kitty terminal cockpit session, controlling terminal panes and tabs, sending commands to specific panes, checking teammate status, launching or restarting the cockpit session, or performing any terminal window management. Activate for "launch cockpit", "send to pane", "focus tab", "teammate status", "list panes", "manage windows", "terminal layout" requests.
+description: This skill should be used when managing the Kitty terminal cockpit session, controlling terminal panes and tabs, sending commands to specific panes, checking teammate status, launching or restarting the cockpit session, managing the Helm tab for multi-cell strategic views, or performing any terminal window management. Activate for "launch cockpit", "send to pane", "focus tab", "teammate status", "list panes", "manage windows", "terminal layout", "helm tab", "cell topology", "cell status" requests.
 ---
 
 ## When to Use This Skill
@@ -137,6 +137,49 @@ tmux has-session -t "$KITTY_KOMMANDER_SESSION" 2>/dev/null && echo "tmux: ok" ||
 | 1 | Driver | Claude Code cell-leader session |
 | 2 | Notebooks | euporie notebook editor |
 | 3 | Dashboard | beads DAG + project health |
+
+## Helm Tab — Multi-Cell Strategic View
+
+The Helm tab appears when the Kommander deploys sub-cells. It provides the strategic, inter-cell overview.
+
+**Launch Helm manually:**
+```bash
+scripts/helm-launch.sh
+```
+Idempotent — safe to call multiple times. Auto-launches on first `cell-spawn.sh` deployment.
+
+**Check if Helm tab exists:**
+```bash
+kitty @ --to "$KITTY_LISTEN_ON" ls | python3 -c "
+import json, sys
+tabs = json.load(sys.stdin)
+helm = any(t['title'] == 'Helm' for w in tabs for t in w['tabs'])
+print('Helm tab exists' if helm else 'No Helm tab')
+"
+```
+
+**Helm pane renderers:**
+```bash
+# Left pane: cell topology DAG (graphviz)
+python3 scripts/cockpit_dash.py --helm-topology
+
+# Right pane: cell status cards (ANSI text)
+python3 scripts/cockpit_dash.py --helm-status
+
+# Capture for agentic vision
+python3 scripts/cockpit_dash.py --capture-helm-topology /tmp/helm.png
+python3 scripts/cockpit_dash.py --capture-helm-status /tmp/helm.txt
+```
+
+**Data sources:**
+- `bd federation list-peers --format=json` — cell topology
+- `bd gate check --format=json` — cross-cell blockers
+- `bd stats --format=json` (per cell) — cell health summaries
+
+**When Helm appears:**
+- Helm launches automatically on first `cell-spawn.sh` deployment
+- Single-cell operators never see it
+- Helm shows cells as opaque nodes — never individual beads
 
 ## Guidelines
 - Always use `$KITTY_LISTEN_ON` for the kitty socket path — never hardcode
