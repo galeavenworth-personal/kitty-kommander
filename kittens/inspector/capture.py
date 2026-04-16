@@ -148,14 +148,92 @@ def _x11_screenshot_window(output_path: str, window_id: str) -> str:
     return output_path
 
 
+def _portal_screenshot(output_path: str) -> str:
+    """Capture the screen via XDG Desktop Portal.
+
+    Works inside sandboxed environments (snap, flatpak) where the GNOME
+    Shell D-Bus API is restricted.  Requires the user to have granted
+    screenshot permission via the portal's interactive dialog at least
+    once.  Subsequent non-interactive requests are auto-approved.
+
+    Parameters
+    ----------
+    output_path : str
+        Destination file path for the PNG screenshot.
+
+    Returns
+    -------
+    str
+        The output file path on success.
+
+    Raises
+    ------
+    RuntimeError
+        If the portal is unavailable, the user denies, or the call
+        times out.
+    """
+    import shutil
+
+    try:
+        import dbus
+        import dbus.mainloop.glib
+        from gi.repository import GLib
+    except ImportError:
+        raise RuntimeError(
+            "python-dbus and PyGObject are required for portal screenshots"
+        )
+
+    # Must create a FRESH bus connection with the GLib main loop attached.
+    # If _gnome_screenshot_window was tried first, its synchronous dbus
+    # connection won't have a main loop — we need a new one.
+    glib_loop = dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+    bus = dbus.SessionBus(private=True, mainloop=glib_loop)
+    result = [None]
+
+    def on_response(response, results):
+        if response == 0:
+            uri = str(results.get("uri", ""))
+            if uri.startswith("file://"):
+                shutil.copy2(uri[7:], output_path)
+                result[0] = output_path
+        loop.quit()
+
+    proxy = bus.get_object(
+        "org.freedesktop.portal.Desktop",
+        "/org/freedesktop/portal/desktop",
+    )
+    iface = dbus.Interface(proxy, "org.freedesktop.portal.Screenshot")
+    request_path = iface.Screenshot("", {"interactive": dbus.Boolean(False)})
+
+    bus.add_signal_receiver(
+        on_response,
+        signal_name="Response",
+        dbus_interface="org.freedesktop.portal.Request",
+        path=str(request_path),
+    )
+
+    loop = GLib.MainLoop()
+    GLib.timeout_add_seconds(10, loop.quit)
+    loop.run()
+
+    if result[0] is None:
+        raise RuntimeError(
+            "Portal screenshot failed — permission denied or timed out. "
+            "Run once with interactive=True to grant permission."
+        )
+    return result[0]
+
+
 def screenshot_focused_window(output_path: str) -> str:
     """Capture the currently focused kitty window as a PNG screenshot.
 
-    Platform detection:
-    - If ``WAYLAND_DISPLAY`` is set: uses GNOME D-Bus ScreenshotWindow.
-    - Elif ``DISPLAY`` is set: uses ImageMagick ``import`` with the
-      window ID from ``kitten @ ls``.
-    - Otherwise: raises RuntimeError.
+    Platform detection (tries methods in order until one succeeds):
+
+    1. If ``WAYLAND_DISPLAY`` is set: try GNOME D-Bus ScreenshotWindow.
+    2. If step 1 fails (sandbox): fall back to XDG Desktop Portal.
+    3. Elif ``DISPLAY`` is set: uses ImageMagick ``import`` with the
+       window ID from ``kitten @ ls``.
+    4. Otherwise: raises RuntimeError.
 
     Parameters
     ----------
@@ -173,7 +251,11 @@ def screenshot_focused_window(output_path: str) -> str:
         If no display server is detected or the screenshot fails.
     """
     if os.environ.get("WAYLAND_DISPLAY"):
-        return _gnome_screenshot_window(output_path)
+        try:
+            return _gnome_screenshot_window(output_path)
+        except (RuntimeError, Exception):
+            # GNOME Shell D-Bus blocked (snap/flatpak) — try portal
+            return _portal_screenshot(output_path)
     elif os.environ.get("DISPLAY"):
         wid = _get_focused_window_id()
         return _x11_screenshot_window(output_path, wid)
@@ -236,6 +318,7 @@ def focus_and_capture(
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
             raise RuntimeError(f"Failed to focus pane '{pane}': {exc}") from exc
 
-    time.sleep(0.2)
+    # Portal-based capture needs longer settle time than direct D-Bus
+    time.sleep(1.0)
 
     return screenshot_focused_window(output_path)
