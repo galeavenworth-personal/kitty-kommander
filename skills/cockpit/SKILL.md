@@ -77,6 +77,38 @@ tmux select-pane -t "$KITTY_KOMMANDER_SESSION.0"    # Select pane by index
 # Or use Alt+1..4 keybinds (configured in tmux.conf)
 ```
 
+## Agent Pane Management
+
+The cell-leader creates tmux panes for teammates using `cockpit-panes.sh`.
+
+### Create panes for teammates
+```bash
+# After spawning agents, create their Cockpit panes:
+scripts/cockpit-panes.sh builder-1 scout-1 critic-1
+
+# The script:
+# - Creates one pane per agent in $KITTY_KOMMANDER_SESSION
+# - Sets each pane's title to the agent name
+# - Prints a visible banner with agent name + "waiting for orders"
+# - Uses tmux tiled layout (2x2 grid for 4 agents)
+# - Is idempotent: re-running with same names is safe
+```
+
+### Check agent pane state
+```bash
+# List all panes with titles
+tmux list-panes -t "$KITTY_KOMMANDER_SESSION:0" -F "#{pane_index}: #{pane_title} (#{pane_current_command})"
+
+# Read a specific pane's content
+tmux capture-pane -p -t "$KITTY_KOMMANDER_SESSION:0.0"
+```
+
+### Send a command to an agent's pane
+```bash
+# By pane index
+tmux send-keys -t "$KITTY_KOMMANDER_SESSION:0.1" "echo status update" Enter
+```
+
 ## Cockpit Session Lifecycle
 
 ### Launch cockpit

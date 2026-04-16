@@ -133,6 +133,7 @@ fi
 # Ensure launch scripts are executable
 chmod +x "$SCRIPT_DIR/scripts/launch-cockpit.sh" 2>/dev/null && ok "launch-cockpit.sh" || true
 chmod +x "$SCRIPT_DIR/scripts/launch-claude.sh" 2>/dev/null && ok "launch-claude.sh" || true
+chmod +x "$SCRIPT_DIR/scripts/cockpit-panes.sh" 2>/dev/null && ok "cockpit-panes.sh" || true
 
 # Symlink inspector kitten (enables 'kitty +kitten inspector <subcommand>')
 KITTEN_DIR="$HOME/.config/kitty"

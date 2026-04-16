@@ -42,6 +42,7 @@ The correct sequence is always:
 1. **First**: `TeamCreate(team_name="mission-name", description="what we're building")`
 2. **Wait** for TeamCreate to return successfully.
 3. **Only then**: `Agent(name="builder", team_name="mission-name", prompt="[bounded order]")`
+4. **After spawning**: Create Cockpit panes so teammates are visible in the tmux canvas.
 
 ```
 # STEP 1 — MANDATORY BEFORE ANY Agent CALL
@@ -50,7 +51,17 @@ TeamCreate(team_name="mission-name", description="what we're building")
 # STEP 2 — ONLY AFTER TeamCreate SUCCEEDS
 Agent(name="builder", team_name="mission-name", prompt="[bounded order with full context]")
 Agent(name="scout", team_name="mission-name", prompt="[bounded order with full context]")
+
+# STEP 3 — CREATE COCKPIT PANES (immediately after Agent calls)
+# This makes teammates visible in the Cockpit tab's tmux session.
+Bash: scripts/cockpit-panes.sh builder scout
 ```
+
+**Cockpit pane rule**: After every batch of `Agent` calls, run
+`scripts/cockpit-panes.sh <name1> <name2> ...` with the agent names you just
+spawned. This creates titled tmux panes in the Cockpit tab so you and the
+operator can see teammate activity. The script is idempotent — calling it
+again with the same names is safe.
 
 - Teammates discover each other via `~/.claude/teams/{team-name}/config.json`
 - Use `SendMessage(to="<name>")` for inter-agent communication — messages deliver automatically
