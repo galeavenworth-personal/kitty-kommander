@@ -1,11 +1,11 @@
-"""Tests for build_dag_dot() — the pure DOT-generation function in cockpit_dash."""
+"""Tests for build_dag_dot() — the pure DOT-generation function in dash_data."""
 
 import sys
 from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-from cockpit_dash import build_dag_dot
+from dash_data import build_dag_dot
 
 
 # ── Test data helpers ────────────────────────────────────────────────────────
@@ -39,7 +39,7 @@ def test_single_blocked_edge():
     assert '"proj-xyz" -> "proj-abc"' in dot
 
 
-@patch("cockpit_dash.has_sprites", return_value=False)
+@patch("dash_data.has_sprites", return_value=False)
 def test_node_colors_match_state(mock_has_sprites):
     """Blocked = red, ready = green, WIP = yellow (fallback circle path)."""
     blocked = [_blocked("p-b", "blocked one", ["p-r", "p-w"])]
@@ -60,9 +60,10 @@ def test_node_colors_match_state(mock_has_sprites):
     assert "#e0af68" in dot
 
 
-@patch("cockpit_dash.has_sprites", return_value=True)
-@patch("cockpit_dash.sprite_path", return_value="/fake/yarn_ready.png")
-def test_sprite_paths_when_available(mock_sprite_path, mock_has_sprites):
+@patch("dash_data.has_sprites", return_value=True)
+@patch("dash_data.sprite_path", return_value="/fake/yarn_ready.png")
+@patch("dash_data.has_kitty_sprites", return_value=False)
+def test_sprite_paths_when_available(mock_kitty, mock_sprite_path, mock_has_sprites):
     blocked = [_blocked("p-b", "task b", ["p-r"])]
     ready = [_issue("p-r")]
     all_open = [_issue("p-r", "task r"), _issue("p-b", "task b")]
@@ -73,8 +74,9 @@ def test_sprite_paths_when_available(mock_sprite_path, mock_has_sprites):
     assert "image=" in dot
 
 
-@patch("cockpit_dash.has_sprites", return_value=False)
-def test_fallback_circles_when_no_sprites(mock_has_sprites):
+@patch("dash_data.has_sprites", return_value=False)
+@patch("dash_data.has_kitty_sprites", return_value=False)
+def test_fallback_circles_when_no_sprites(mock_kitty, mock_has_sprites):
     blocked = [_blocked("p-b", "task b", ["p-r"])]
     ready = [_issue("p-r")]
     all_open = [_issue("p-r", "task r"), _issue("p-b", "task b")]
@@ -109,3 +111,40 @@ def test_dot_is_valid_syntax():
     assert dot is not None
     assert dot.startswith("digraph G {")
     assert dot.rstrip().endswith("}")
+
+
+# ── Composite node tests (z0q.2) ────────────────────────────────────────────
+
+
+@patch("dash_data.has_sprites", return_value=True)
+@patch("dash_data.sprite_path", return_value="/fake/yarn_wip.png")
+@patch("dash_data.has_kitty_sprites", return_value=True)
+@patch("dash_data.kitty_sprite_path", return_value="/fake/builder_wip.png")
+def test_composite_node_with_kitty_badge(mock_ksp, mock_hks, mock_sp, mock_hs):
+    """When assignee_map provides an agent, the node gets a kitty badge xlabel."""
+    blocked = [_blocked("p-b", "task b", ["p-w"])]
+    ready = []
+    all_open = [_issue("p-b", "task b")]
+    wip = [_issue("p-w", "wip task")]
+    assignee_map = {"p-w": "builder-01"}
+
+    dot = build_dag_dot(blocked, ready, all_open, wip, assignee_map=assignee_map)
+    assert dot is not None
+    assert "xlabel=" in dot
+    assert "/fake/builder_wip.png" in dot
+
+
+@patch("dash_data.has_sprites", return_value=True)
+@patch("dash_data.sprite_path", return_value="/fake/yarn_ready.png")
+@patch("dash_data.has_kitty_sprites", return_value=False)
+def test_no_kitty_badge_when_sprites_absent(mock_hks, mock_sp, mock_hs):
+    """Without kitty sprites, nodes render as yarn ball only — no xlabel."""
+    blocked = [_blocked("p-b", "task b", ["p-r"])]
+    ready = [_issue("p-r")]
+    all_open = [_issue("p-r", "ready"), _issue("p-b", "task b")]
+    wip = []
+    assignee_map = {"p-r": "scout-01"}
+
+    dot = build_dag_dot(blocked, ready, all_open, wip, assignee_map=assignee_map)
+    assert dot is not None
+    assert "xlabel=" not in dot

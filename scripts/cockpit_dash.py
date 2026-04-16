@@ -6,35 +6,30 @@ Usage:
     cockpit_dash.py --sidebar   # Right pane: stats + ready queue + activity
 
 Auto-refreshes every 30 seconds. Ctrl-C to exit.
+
+All data fetching and pure logic lives in dash_data.py.
+This module handles only rendering (subprocess calls to dot/timg, ANSI output).
 """
 
-import json
-import os
 import shutil
 import subprocess
 import sys
 import time
 from datetime import datetime
-from pathlib import Path
 
-# --- Tokyo Night Palette ---
-PAL = {
-    "bg": "#1a1b26", "fg": "#a9b1d6", "accent": "#7aa2f7",
-    "red": "#f7768e", "green": "#9ece6a", "yellow": "#e0af68",
-    "grey": "#565f89", "dark": "#24283b",
-}
+from dash_data import (
+    PAL,
+    bd,
+    build_dag_dot,
+    build_sidebar_text,
+    get_agents,
+    get_mutations,
+    git_log,
+)
+
+# ── ANSI Helpers ──────────────────────────────────────────────────────────────
 
 TIMG = "/usr/bin/timg"
-
-# Resolve project and sprite directories
-SCRIPT_DIR = Path(__file__).resolve().parent
-REPO_DIR = SCRIPT_DIR.parent
-SPRITE_DIR = REPO_DIR / "sprites" / "nodes"
-
-PROJECT_DIR = os.environ.get(
-    "KITTY_KOMMANDER_DIR",
-    os.getcwd(),
-)
 
 
 def ansi(hex_color):
@@ -44,201 +39,34 @@ def ansi(hex_color):
 
 RST = "\033[0m"
 CLR = "\033[2J\033[H"
-BOLD = "\033[1m"
 DIM = "\033[2m"
 
 C_RED = ansi(PAL["red"])
 C_GREEN = ansi(PAL["green"])
-C_YELLOW = ansi(PAL["yellow"])
 C_GREY = ansi(PAL["grey"])
-C_ACCENT = ansi(PAL["accent"])
-C_FG = ansi(PAL["fg"])
-
-
-# ── Data Layer ────────────────────────────────────────────────────────────────
-
-def bd(args):
-    """Run bd with --format=json and return parsed output."""
-    try:
-        result = subprocess.run(
-            ["bd"] + args + ["--format=json"],
-            capture_output=True, text=True, timeout=15, cwd=PROJECT_DIR,
-        )
-        if result.stdout.strip():
-            return json.loads(result.stdout)
-    except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
-        pass
-    return [] if args[0] in ("ready", "blocked", "list") else {}
-
-
-def git_log(n=10):
-    try:
-        r = subprocess.run(
-            ["git", "log", "--oneline", "--no-decorate", f"-{n}"],
-            capture_output=True, text=True, timeout=5, cwd=PROJECT_DIR,
-        )
-        return [l for l in r.stdout.strip().split("\n") if l]
-    except Exception:
-        return []
 
 
 def term_size():
     return shutil.get_terminal_size((120, 40))
 
 
-# ── Sprite Support ───────────────────────────────────────────────────────────
-
-def sprite_path(state):
-    """Return absolute path to yarn ball sprite for a state, or None."""
-    p = SPRITE_DIR / f"yarn_{state}.png"
-    return str(p) if p.exists() else None
-
-
-def has_sprites():
-    """Check if yarn ball sprites are available."""
-    return all(
-        (SPRITE_DIR / f"yarn_{s}.png").exists()
-        for s in ("ready", "blocked", "wip", "open")
-    )
-
-
 # ── DAG Rendering ─────────────────────────────────────────────────────────────
 
-def build_dag_dot(blocked, ready, all_open, wip):
-    """Generate Graphviz DOT string from beads issue data.
-
-    Pure function — no I/O, no subprocess calls.
-
-    Parameters
-    ----------
-    blocked : list[dict]
-        Issues from bd blocked (each has 'id', 'title', 'blocked_by').
-    ready : list[dict]
-        Issues from bd ready (each has 'id').
-    all_open : list[dict]
-        Issues from bd list --status=open (each has 'id', 'title').
-    wip : list[dict]
-        Issues from bd list --status=in_progress (each has 'id').
-
-    Returns
-    -------
-    str or None
-        DOT string for graphviz, or None if no dependency chains exist.
-    """
-    ready_ids = {r["id"] for r in ready}
-    wip_ids = {r["id"] for r in wip}
-    title_map = {i["id"]: i.get("title", "") for i in all_open + wip}
-    blocked_ids = {b["id"] for b in blocked}
-
-    # Build nodes + edges from blocked dependency data
-    nodes = {}  # id → {"label": str, "state": str}
-    edges = []  # [(src, dst)]
-
-    for issue in blocked:
-        sid = issue["id"].split("-")[-1]
-        title = issue.get("title", "")[:32]
-        nodes[issue["id"]] = {"label": f"{sid}: {title}", "state": "blocked"}
-
-        for blocker_id in issue.get("blocked_by", []):
-            edges.append((blocker_id, issue["id"]))
-            if blocker_id not in nodes:
-                b_sid = blocker_id.split("-")[-1]
-                b_title = title_map.get(blocker_id, "")[:32]
-                if blocker_id in wip_ids:
-                    state = "wip"
-                elif blocker_id in ready_ids:
-                    state = "ready"
-                elif blocker_id in blocked_ids:
-                    state = "blocked"
-                else:
-                    state = "open"
-                nodes[blocker_id] = {"label": f"{b_sid}: {b_title}", "state": state}
-
-    if not nodes:
-        return None
-
-    use_sprites = has_sprites()
-
-    # Generate DOT
-    fill_map = {
-        "blocked": PAL["red"], "ready": PAL["green"],
-        "wip": PAL["yellow"], "open": PAL["grey"],
-    }
-
-    # Edge color: yarn strand in accent blue, fading to dark
-    edge_color = f"{PAL['accent']}:{PAL['dark']}"
-
-    dot = [
-        "digraph G {",
-        f'  graph [bgcolor="{PAL["bg"]}", pad="0.8", nodesep="1.0",'
-        f' ranksep="1.8", fontname="Noto Sans Mono", rankdir="TB",'
-        f' splines="curved"];',
-    ]
-
-    if use_sprites:
-        # Image-based yarn ball nodes
-        dot.append(
-            f'  node [shape="none", fontname="Noto Sans Mono",'
-            f' fontsize="9", fontcolor="{PAL["fg"]}", labelloc="b",'
-            f' imagepos="tc", imagescale="true", fixedsize="true",'
-            f' width="1.0", height="1.3"];'
-        )
-    else:
-        # Fallback: styled circles (yarn ball aesthetic without sprites)
-        dot.append(
-            f'  node [shape="circle", style="filled", fontname="Noto Sans Mono",'
-            f' fontsize="9", penwidth="2.0", fixedsize="true",'
-            f' width="0.9", height="0.9"];'
-        )
-
-    dot.append(
-        f'  edge [color="{edge_color}", penwidth="2.5",'
-        f' arrowsize="0.6", arrowhead="vee"];'
-    )
-
-    for nid, node in nodes.items():
-        fill = fill_map.get(node["state"], PAL["grey"])
-        fc = PAL["bg"] if node["state"] in ("ready", "blocked", "wip") else PAL["fg"]
-        label = node["label"].replace('"', '\\"')
-
-        sp = sprite_path(node["state"]) if use_sprites else None
-
-        if sp:
-            # Yarn ball sprite node
-            extra = ""
-            if node["state"] == "wip":
-                extra = f', penwidth="3.0", color="{PAL["fg"]}"'
-            dot.append(
-                f'  "{nid}" [image="{sp}", label="{label}"{extra}];'
-            )
-        else:
-            # Fallback styled circle
-            if node["state"] == "wip":
-                dot.append(
-                    f'  "{nid}" [label="{label}", fillcolor="{fill}",'
-                    f' fontcolor="{fc}", penwidth="4.0",'
-                    f' style="filled,dashed", color="{PAL["fg"]}"];'
-                )
-            else:
-                dot.append(
-                    f'  "{nid}" [label="{label}", fillcolor="{fill}",'
-                    f' fontcolor="{fc}"];'
-                )
-
-    for src, dst in edges:
-        dot.append(f'  "{src}" -> "{dst}";')
-
-    dot.append("}")
-    return "\n".join(dot)
-
-
 def render_dag():
+    """Fetch data, generate DOT via pure function, render through dot → timg."""
     blocked = bd(["blocked"])
     ready = bd(["ready", "-n", "100"])
     all_open = bd(["list", "--status=open", "-n", "100"])
     wip = bd(["list", "--status=in_progress", "-n", "100"])
 
-    dot_str = build_dag_dot(blocked, ready, all_open, wip)
+    # Build assignee map for kitty badge overlays
+    assignee_map = {}
+    for issue in wip:
+        assignee = issue.get("assignee", "") or issue.get("claimed_by", "")
+        if assignee:
+            assignee_map[issue["id"]] = assignee
+
+    dot_str = build_dag_dot(blocked, ready, all_open, wip, assignee_map=assignee_map)
 
     if dot_str is None:
         sys.stdout.write(CLR)
@@ -282,75 +110,27 @@ def render_dag():
 # ── Sidebar Rendering ─────────────────────────────────────────────────────────
 
 def render_sidebar():
-    stats_raw = bd(["stats"])
-    stats = stats_raw.get("summary", {})
+    """Fetch all data, generate sidebar text via pure function, print."""
+    stats = bd(["stats"])
     ready = bd(["ready", "-n", "100"])
     commits = git_log(10)
-
-    total = stats.get("total_issues", 0)
-    closed = stats.get("closed_issues", 0)
-    open_n = stats.get("open_issues", 0)
-    blocked_n = stats.get("blocked_issues", 0)
-    ready_n = stats.get("ready_issues", 0)
-    wip_n = stats.get("in_progress_issues", 0)
+    mutations = get_mutations(limit=8)
+    agents = get_agents()
 
     cols, _ = term_size()
     bar_w = min(cols - 6, 50)
 
-    sys.stdout.write(CLR)
-
-    # ── Health ──
-    pct = int((closed / total) * 100) if total > 0 else 0
-    print(f"\n  {BOLD}{C_FG}PROJECT HEALTH{RST}  {C_ACCENT}{pct}%{RST} complete")
-    print()
-
-    if total > 0:
-        c = max(int((closed / total) * bar_w), 0)
-        r = max(int((ready_n / total) * bar_w), 0)
-        b = max(int((blocked_n / total) * bar_w), 0)
-        o = max(bar_w - c - r - b, 0)
-        bar = f"{C_GREY}{'█' * c}{C_GREEN}{'█' * r}{C_RED}{'█' * b}{C_FG}{'░' * o}"
-        print(f"  {bar}{RST}")
-        print()
-
-    legend = (
-        f"  {C_GREY}■ {closed} closed  "
-        f"{C_GREEN}■ {ready_n} ready  "
-        f"{C_RED}■ {blocked_n} blocked  "
-        f"{C_YELLOW}■ {wip_n} wip  "
-        f"{C_FG}■ {open_n} open{RST}"
+    text = build_sidebar_text(
+        stats=stats,
+        ready=ready,
+        commits=commits,
+        mutations=mutations,
+        agents=agents,
+        bar_width=bar_w,
     )
-    print(legend)
-    print(f"\n  {C_GREY}{'─' * bar_w}{RST}")
 
-    # ── Ready Queue ──
-    print(f"\n  {BOLD}{C_GREEN}READY QUEUE{RST}")
-    print()
-
-    for issue in ready[:12]:
-        pri = issue.get("priority", 4)
-        pri_c = C_RED if pri <= 1 else (C_YELLOW if pri == 2 else C_GREY)
-        sid = issue["id"].split("-")[-1]
-        title = issue.get("title", "")[:42]
-        print(f"  {C_GREY}{sid}{RST}  {pri_c}P{pri}{RST}  {C_FG}{title}{RST}")
-
-    if len(ready) > 12:
-        print(f"  {C_GREY}... +{len(ready) - 12} more{RST}")
-
-    print(f"\n  {C_GREY}{'─' * bar_w}{RST}")
-
-    # ── Recent Commits ──
-    print(f"\n  {BOLD}{C_ACCENT}RECENT COMMITS{RST}")
-    print()
-
-    for commit in commits[:8]:
-        parts = commit.split(" ", 1)
-        sha = parts[0] if parts else ""
-        msg = parts[1][:48] if len(parts) > 1 else ""
-        print(f"  {C_YELLOW}{sha}{RST}  {C_FG}{msg}{RST}")
-
-    if not commits:
-        print(f"  {C_GREY}(no commits){RST}")
+    sys.stdout.write(CLR)
+    print(text)
 
     # ── Timestamp ──
     now = datetime.now().strftime("%H:%M:%S")
