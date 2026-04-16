@@ -4,6 +4,15 @@
 # Claude Code worktrees
 .claude/worktrees/
 
+# Claude Code project state (auto-generated, not meant for git)
+.claude/projects/
+
+# Operator-specific local notes — infrastructure details, credentials,
+# internal URLs, handoffs that reference private hosts. Never commit.
+.claude/local/
+HANDOFF-local.md
+*.local.md
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
