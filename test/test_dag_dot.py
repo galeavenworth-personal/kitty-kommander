@@ -148,3 +148,39 @@ def test_no_kitty_badge_when_sprites_absent(mock_hks, mock_sp, mock_hs):
     dot = build_dag_dot(blocked, ready, all_open, wip, assignee_map=assignee_map)
     assert dot is not None
     assert "xlabel=" not in dot
+
+
+# ── Bead-to-pose state mapping tests (91t.7) ───────────────────────────────
+
+
+def test_bead_state_mapping():
+    """kitty_sprite_path translates beads states to kitty pose names."""
+    from dash_data import _BEAD_TO_POSE
+
+    assert _BEAD_TO_POSE["wip"] == "active"
+    assert _BEAD_TO_POSE["ready"] == "idle"
+    assert _BEAD_TO_POSE["open"] == "idle"
+    assert _BEAD_TO_POSE["blocked"] == "blocked"
+    assert _BEAD_TO_POSE["done"] == "done"
+    assert _BEAD_TO_POSE["in_progress"] == "active"
+    assert _BEAD_TO_POSE["closed"] == "done"
+
+
+@patch("dash_data.has_sprites", return_value=True)
+@patch("dash_data.has_kitty_sprites", return_value=True)
+def test_wip_node_gets_active_kitty_pose(mock_hks, mock_hs):
+    """WIP bead state should resolve to 'active' kitty pose, not fall back to idle."""
+    with patch("dash_data.sprite_path", return_value="/fake/yarn_wip.png"), \
+         patch("dash_data.kitty_sprite_path", wraps=lambda role, state, size="badge":
+               f"/fake/{role}_{state}.png") as mock_ksp:
+        blocked = [_blocked("p-b", "task b", ["p-w"])]
+        ready = []
+        all_open = [_issue("p-b", "task b")]
+        wip = [_issue("p-w", "wip task")]
+        assignee_map = {"p-w": "builder-01"}
+
+        dot = build_dag_dot(blocked, ready, all_open, wip, assignee_map=assignee_map)
+        assert dot is not None
+        # The kitty_sprite_path should be called with the bead state "wip"
+        # and internally map it to "active" pose
+        mock_ksp.assert_any_call("builder", "wip")

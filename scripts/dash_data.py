@@ -167,12 +167,28 @@ def has_sprites():
     )
 
 
+# Beads states → kitty sprite poses. DAG nodes use beads states (ready,
+# blocked, wip, open) but kitty sprites use pose names (idle, active,
+# blocked, done, etc.). This mapping bridges the two vocabularies.
+_BEAD_TO_POSE = {
+    "ready": "idle",
+    "open": "idle",
+    "wip": "active",
+    "blocked": "blocked",
+    "done": "done",
+    "in_progress": "active",
+    "closed": "done",
+}
+
+
 def kitty_sprite_path(role, state, size="badge"):
     """Return absolute path to kitty sprite, or None if not found.
 
-    Tries exact match first, then falls back to idle state.
+    Translates beads states to kitty pose names, tries exact match,
+    then falls back to idle state.
     """
-    p = KITTY_SPRITE_DIR / size / f"{role}_{state}.png"
+    pose = _BEAD_TO_POSE.get(state, state)
+    p = KITTY_SPRITE_DIR / size / f"{role}_{pose}.png"
     if p.exists():
         return str(p)
     # Fallback: idle pose for the role
