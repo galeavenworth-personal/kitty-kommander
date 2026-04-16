@@ -140,9 +140,118 @@ def render_sidebar():
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+def capture_dag(output_path, project_dir=None):
+    """Render the DAG to a PNG file (no terminal, no timg).
+
+    This is the agentic vision loop — an agent calls this, reads the PNG
+    via its vision tool, evaluates the rendering, and iterates.
+
+    Parameters
+    ----------
+    output_path : str
+        Destination PNG file path.
+    project_dir : str, optional
+        Override project directory for data fetching.
+
+    Returns
+    -------
+    str or None
+        The output path on success, None if no dependency chains exist.
+    """
+    kwargs = {"project_dir": project_dir} if project_dir else {}
+    blocked = bd(["blocked"], **kwargs)
+    ready = bd(["ready", "-n", "100"], **kwargs)
+    all_open = bd(["list", "--status=open", "-n", "100"], **kwargs)
+    wip = bd(["list", "--status=in_progress", "-n", "100"], **kwargs)
+
+    assignee_map = {}
+    for issue in wip:
+        assignee = issue.get("assignee", "") or issue.get("claimed_by", "")
+        if assignee:
+            assignee_map[issue["id"]] = assignee
+
+    dot_str = build_dag_dot(blocked, ready, all_open, wip, assignee_map=assignee_map)
+    if dot_str is None:
+        return None
+
+    try:
+        dot_proc = subprocess.Popen(
+            ["dot", "-Tpng", "-Gdpi=150"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        )
+        png, _ = dot_proc.communicate(dot_str.encode(), timeout=10)
+        if dot_proc.returncode != 0 or not png:
+            return None
+
+        with open(output_path, "wb") as f:
+            f.write(png)
+        return output_path
+
+    except Exception:
+        return None
+
+
+def capture_sidebar(output_path=None, project_dir=None):
+    """Capture the sidebar text (stripped of ANSI codes if saving to file).
+
+    Parameters
+    ----------
+    output_path : str, optional
+        If given, write raw text to file. Otherwise return the ANSI string.
+    project_dir : str, optional
+        Override project directory for data fetching.
+
+    Returns
+    -------
+    str
+        The sidebar text (with ANSI codes if no output_path, stripped if saved).
+    """
+    import re
+
+    kwargs = {"project_dir": project_dir} if project_dir else {}
+    stats = bd(["stats"], **kwargs)
+    ready = bd(["ready", "-n", "100"], **kwargs)
+    commits = git_log(10, project_dir=project_dir)
+    mutations = get_mutations(limit=8, project_dir=project_dir)
+    agents = get_agents(project_dir=project_dir)
+
+    text = build_sidebar_text(
+        stats=stats, ready=ready, commits=commits,
+        mutations=mutations, agents=agents, bar_width=50,
+    )
+
+    if output_path:
+        stripped = re.sub(r"\033\[[0-9;]*m", "", text)
+        with open(output_path, "w") as f:
+            f.write(stripped)
+
+    return text
+
+
 def main():
-    if len(sys.argv) < 2 or sys.argv[1] not in ("--dag", "--sidebar"):
-        print("Usage: cockpit_dash.py [--dag | --sidebar]")
+    if len(sys.argv) < 2:
+        print("Usage: cockpit_dash.py [--dag | --sidebar | --capture-dag FILE | --capture-sidebar FILE]")
+        sys.exit(1)
+
+    if sys.argv[1] == "--capture-dag":
+        path = sys.argv[2] if len(sys.argv) > 2 else "test-artifacts/dag_capture.png"
+        project = sys.argv[3] if len(sys.argv) > 3 else None
+        result = capture_dag(path, project_dir=project)
+        if result:
+            print(f"DAG captured: {result}")
+        else:
+            print("No dependency chains to render.")
+        return
+
+    if sys.argv[1] == "--capture-sidebar":
+        path = sys.argv[2] if len(sys.argv) > 2 else "test-artifacts/sidebar_capture.txt"
+        project = sys.argv[3] if len(sys.argv) > 3 else None
+        capture_sidebar(path, project_dir=project)
+        print(f"Sidebar captured: {path}")
+        return
+
+    if sys.argv[1] not in ("--dag", "--sidebar"):
+        print("Usage: cockpit_dash.py [--dag | --sidebar | --capture-dag FILE | --capture-sidebar FILE]")
         sys.exit(1)
 
     render = render_dag if sys.argv[1] == "--dag" else render_sidebar
