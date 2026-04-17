@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`Sidebar — sidebar-empty-project > matches sidebar-empty snapshot > sidebar-empty 1`] = `
+exports[`Sidebar — sidebar-empty-project > matches the snapshot named by the scenario > sidebar-empty 1`] = `
 "
  PROJECT HEALTH
  [--------------------] 0% complete
@@ -14,7 +14,7 @@ exports[`Sidebar — sidebar-empty-project > matches sidebar-empty snapshot > si
 "
 `;
 
-exports[`Sidebar — sidebar-shows-health > matches sidebar-basic snapshot > sidebar-basic 1`] = `
+exports[`Sidebar — sidebar-shows-health > matches the snapshot named by the scenario > sidebar-basic 1`] = `
 "
  PROJECT HEALTH
  [############--------] 60% complete

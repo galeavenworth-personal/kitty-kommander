@@ -8,6 +8,10 @@ import {
   SIDEBAR_SHOWS_HEALTH,
   SIDEBAR_EMPTY_PROJECT,
 } from "../../generated/fixtures.js";
+import {
+  SIDEBAR_SHOWS_HEALTH_EXPECTED,
+  SIDEBAR_EMPTY_PROJECT_EXPECTED,
+} from "../../generated/assertions.js";
 
 function renderSidebar(fixture: BeadsFixture) {
   return render(
@@ -18,44 +22,43 @@ function renderSidebar(fixture: BeadsFixture) {
 }
 
 describe("Sidebar — sidebar-shows-health", () => {
-  it("renders health bar, ready queue, and recent commits from a realistic fixture", () => {
+  it("renders every contains string from the scenario and no excludes", () => {
     const { lastFrame } = renderSidebar(SIDEBAR_SHOWS_HEALTH);
     const frame = lastFrame() ?? "";
 
-    const requiredSubstrings = [
-      "60% complete",
-      "12 closed",
-      "3 blocked",
-      "2 wip",
-      "Fix auth bug",
-      "Add logging",
-      "f028764",
-    ];
-    for (const s of requiredSubstrings) {
+    for (const s of SIDEBAR_SHOWS_HEALTH_EXPECTED.contains) {
       expect(frame, `expected "${s}" in frame:\n${frame}`).toContain(s);
     }
-
-    expect(frame).not.toContain("NaN");
+    for (const s of SIDEBAR_SHOWS_HEALTH_EXPECTED.excludes) {
+      expect(frame, `expected "${s}" NOT in frame:\n${frame}`).not.toContain(s);
+    }
   });
 
-  it("matches sidebar-basic snapshot", () => {
+  it("matches the snapshot named by the scenario", () => {
     const { lastFrame } = renderSidebar(SIDEBAR_SHOWS_HEALTH);
-    expect(lastFrame()).toMatchSnapshot("sidebar-basic");
+    const name = SIDEBAR_SHOWS_HEALTH_EXPECTED.snapshot;
+    if (!name) throw new Error("sidebar-shows-health missing snapshot name");
+    expect(lastFrame()).toMatchSnapshot(name);
   });
 });
 
 describe("Sidebar — sidebar-empty-project", () => {
-  it("shows 0% complete and No work items placeholder — never NaN", () => {
+  it("renders every contains string from the scenario and no excludes", () => {
     const { lastFrame } = renderSidebar(SIDEBAR_EMPTY_PROJECT);
     const frame = lastFrame() ?? "";
 
-    expect(frame).toContain("0% complete");
-    expect(frame).toContain("No work items");
-    expect(frame).not.toContain("NaN");
+    for (const s of SIDEBAR_EMPTY_PROJECT_EXPECTED.contains) {
+      expect(frame, `expected "${s}" in frame:\n${frame}`).toContain(s);
+    }
+    for (const s of SIDEBAR_EMPTY_PROJECT_EXPECTED.excludes) {
+      expect(frame, `expected "${s}" NOT in frame:\n${frame}`).not.toContain(s);
+    }
   });
 
-  it("matches sidebar-empty snapshot", () => {
+  it("matches the snapshot named by the scenario", () => {
     const { lastFrame } = renderSidebar(SIDEBAR_EMPTY_PROJECT);
-    expect(lastFrame()).toMatchSnapshot("sidebar-empty");
+    const name = SIDEBAR_EMPTY_PROJECT_EXPECTED.snapshot;
+    if (!name) throw new Error("sidebar-empty-project missing snapshot name");
+    expect(lastFrame()).toMatchSnapshot(name);
   });
 });
