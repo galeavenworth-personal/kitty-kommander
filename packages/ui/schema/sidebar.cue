@@ -59,9 +59,17 @@ scenarios: ui: sidebar: [
 				"Add logging",
 				"f028764",
 			]
+			// "0% complete" is deliberately NOT in excludes here —
+			// substring-excluding "0% complete" contradicts the
+			// "60% complete" contains above (suffix collision: the
+			// last 12 chars of "60% complete" ARE "0% complete").
+			// The intent of the original exclude ("don't show zero
+			// when total > 0") is structurally covered by the
+			// complementary scenario `sidebar-empty-project`, which
+			// asserts "0% complete" ONLY when total=0. If both
+			// scenarios pass, the bar is numerically correct.
 			excludes: [
-				"0% complete", // must not show zero when total > 0
-				"NaN",         // must not show NaN in any tier
+				"NaN", // must not show NaN in any tier
 			]
 			snapshot: "sidebar-basic"
 			playwright: {
