@@ -29,16 +29,16 @@ scenarios: reload: [
 
 		// Setup mirrors the end-state of doctor-drift-detected —
 		// Dashboard is missing its Sidebar window. That's the
-		// precondition reload is meant to clear.
+		// precondition reload is meant to clear. Dashboard has no
+		// other windows (DAG deferred to uib.3.DAG), matching the
+		// doctor-drift-detected fixture shape.
 		setup: kitty_state: {
 			tabs: [
 				{title: "Cockpit", windows: []},
 				{title: "Driver", windows: [{cmd: "claude"}]},
 				{title: "Notebooks", windows: [{cmd: "euporie notebook"}]},
-				{title: "Dashboard", windows: [
-					{title: "DAG", cmd: "kommander-ui --dag"},
-					// Sidebar missing — reload spawns it.
-				]},
+				// Sidebar missing — reload spawns it.
+				{title: "Dashboard", windows: []},
 			]
 		}
 
@@ -89,7 +89,6 @@ scenarios: reload: [
 				{title: "Driver", windows: [{cmd: "claude"}]},
 				{title: "Notebooks", windows: [{cmd: "euporie notebook"}]},
 				{title: "Dashboard", windows: [
-					{title: "DAG", cmd: "kommander-ui --dag"},
 					{title: "Sidebar", cmd: "kommander-ui --sidebar"},
 				]},
 			]

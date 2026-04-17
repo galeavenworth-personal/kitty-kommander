@@ -27,9 +27,7 @@ func TestScenariosDoctor(t *testing.T) {
 						{Title: "Notebooks", Windows: []scenario.KittyWindow{
 							{Cmd: scenario.StringOrList([]string{"euporie notebook"})},
 						}},
-						{Title: "Dashboard", Windows: []scenario.KittyWindow{
-							{Title: "DAG", Cmd: scenario.StringOrList([]string{"kommander-ui --dag"})},
-						}},
+						{Title: "Dashboard", Windows: []scenario.KittyWindow{}},
 					},
 				},
 			},
@@ -62,7 +60,6 @@ func TestScenariosDoctor(t *testing.T) {
 							{Cmd: scenario.StringOrList([]string{"euporie notebook"})},
 						}},
 						{Title: "Dashboard", Windows: []scenario.KittyWindow{
-							{Title: "DAG", Cmd: scenario.StringOrList([]string{"kommander-ui --dag"})},
 							{Title: "Sidebar", Cmd: scenario.StringOrList([]string{"kommander-ui --sidebar"})},
 						}},
 					},

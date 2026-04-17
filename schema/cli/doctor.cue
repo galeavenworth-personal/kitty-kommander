@@ -33,7 +33,6 @@ scenarios: doctor: [
 				{title: "Driver", windows: [{cmd: "claude"}]},
 				{title: "Notebooks", windows: [{cmd: "euporie notebook"}]},
 				{title: "Dashboard", windows: [
-					{title: "DAG", cmd: "kommander-ui --dag"},
 					{title: "Sidebar", cmd: "kommander-ui --sidebar"},
 				]},
 			]
@@ -79,10 +78,11 @@ scenarios: doctor: [
 				{title: "Cockpit", windows: []},
 				{title: "Driver", windows: [{cmd: "claude"}]},
 				{title: "Notebooks", windows: [{cmd: "euporie notebook"}]},
-				{title: "Dashboard", windows: [
-					{title: "DAG", cmd: "kommander-ui --dag"},
-					// Sidebar missing — that is the drift.
-				]},
+				// Sidebar missing from Dashboard — that is the drift.
+				// Dashboard has no other windows (DAG deferred to
+				// uib.3.DAG), so an empty window list is the correct
+				// fixture for the "Dashboard degraded" state.
+				{title: "Dashboard", windows: []},
 			]
 		}
 
