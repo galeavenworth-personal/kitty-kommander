@@ -176,10 +176,12 @@ install_kommander_ui_wrapper() {
     if [ -e "$dst" ] && [ ! -L "$dst" ]; then
         # Regular file: only overwrite if it's one we generated. A
         # user-authored kommander-ui script is preserved; the warning
-        # mirrors the symlink() helper's convention.
+        # mirrors the symlink() helper's convention. Return nonzero so
+        # the caller knows verification should not run — skip doesn't
+        # mean our wrapper is active.
         if ! head -n 3 "$dst" 2>/dev/null | grep -Fq "$KOMMANDER_UI_SENTINEL"; then
             warn "kommander-ui — exists (not our wrapper), skipping. Back up and re-run to replace."
-            return
+            return 1
         fi
     elif [ -L "$dst" ]; then
         # An old symlink (from a prior release that tried bare-symlink
@@ -193,8 +195,17 @@ install_kommander_ui_wrapper() {
         return
     }
     # Write via heredoc. $SCRIPT_DIR is the repo root; the wrapper cd's
-    # into its packages/ui subdir where node_modules/tsx is installed.
-    # exec passes argv through without modification.
+    # into packages/ui where node_modules/tsx is installed, then execs
+    # node against ./bin/kommander-ui — the package's Node entry,
+    # which invokes main() to actually render.
+    #
+    # Prior revision (c187816) wrote `src/ink.js` here. That file does
+    # not exist; tsx's extension-bridge silently resolved it to
+    # ink.tsx. Node loaded the module (import side-effects only —
+    # main() was NEVER called), exited 0 with no render. Ghost
+    # execution that passed every exit-code smoke check. The post-
+    # install verification below asserts on RENDERED content to catch
+    # any recurrence of this class of bug.
     cat >"$tmp" <<EOF
 #!/usr/bin/env bash
 $KOMMANDER_UI_SENTINEL
@@ -202,7 +213,7 @@ $KOMMANDER_UI_SENTINEL
 # Do NOT edit by hand — re-run install.sh to regenerate.
 set -euo pipefail
 cd '$SCRIPT_DIR/packages/ui'
-exec node --import=tsx src/ink.js "\$@"
+exec node --import=tsx ./bin/kommander-ui "\$@"
 EOF
     # 0755: world-readable and executable. mktemp defaults to 0600 so
     # `chmod +x` alone lands at 0711; set explicit 0755 to match the
@@ -212,7 +223,38 @@ EOF
     ok "kommander-ui wrapper -> $SCRIPT_DIR/packages/ui"
 }
 
-install_kommander_ui_wrapper "$KOMMANDER_UI_WRAPPER"
+# Verify the wrapper actually renders (NOT just exits 0). The prior
+# revision of this install step passed every exit-code smoke check
+# while silently doing nothing — ghost execution via tsx's extension-
+# bridge resolving a nonexistent path. The assertion below probes for
+# a fixture-specific string ("Fix auth bug" from SIDEBAR_SHOWS_HEALTH)
+# in the wrapper's combined stdout+stderr. Run from /tmp to also
+# prove the `cd` is effective — if the wrapper forgot to cd into
+# packages/ui, tsx resolution fails with ERR_MODULE_NOT_FOUND.
+#
+# Only runs when install_kommander_ui_wrapper returned success
+# (i.e., we actually wrote our wrapper). When the operator has a
+# foreign kommander-ui at that path we skipped; verifying theirs
+# would produce misleading output.
+#
+# timeout bounds at 4s — anything longer is either a hang or a node
+# startup anomaly worth seeing in the warning.
+if install_kommander_ui_wrapper "$KOMMANDER_UI_WRAPPER"; then
+    if command -v node >/dev/null 2>&1; then
+        _ku_verify_output="$(cd /tmp && timeout 4 "$KOMMANDER_UI_WRAPPER" --sidebar </dev/null 2>&1 || true)"
+        if echo "$_ku_verify_output" | grep -qF "Fix auth bug"; then
+            ok "kommander-ui render verified (SIDEBAR_SHOWS_HEALTH fixture strings in output)"
+        else
+            warn "kommander-ui wrapper installed but did NOT render expected fixture strings"
+            warn "  repro: cd /tmp && kommander-ui --sidebar"
+            warn "  expected: output containing 'Fix auth bug'"
+            warn "  got: $(echo "$_ku_verify_output" | head -c 200)"
+        fi
+        unset _ku_verify_output
+    else
+        warn "kommander-ui render check skipped — node not installed"
+    fi
+fi
 
 # ── Generate sprites ─────────────────────────────────────────────────────────
 echo
