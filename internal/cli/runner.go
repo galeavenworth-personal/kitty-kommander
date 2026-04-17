@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -25,8 +27,17 @@ func RunScenario(t *testing.T, handler Handler, sc scenario.Scenario) {
 		mock.SetState(kittyStateFromFixture(*sc.Setup.KittyState))
 	}
 
+	args := argsFromInvocation(sc.Invocation)
+	// materializeDirs creates real temp dirs for path-shaped args
+	// whose basename is baked into the scenario's expected output
+	// (e.g. launch-basic expects "cockpit-my-app" because the
+	// invocation uses "/home/user/my-app"). The substitution
+	// preserves the basename so slug-derivation still produces the
+	// expected output.
+	args = materializeDirs(t, args)
+
 	env := &Env{
-		Args:       argsFromInvocation(sc.Invocation),
+		Args:       args,
 		Controller: mock,
 	}
 
@@ -60,6 +71,39 @@ func RunScenario(t *testing.T, handler Handler, sc scenario.Scenario) {
 
 	assertKittyEffects(t, mock.Effects, sc.Expected.KittyEffects)
 	assertJSONPaths(t, stdout, sc.Expected.JSONPaths)
+}
+
+// materializeDirs rewrites path-shaped positional args so the test
+// can exercise the happy path. The rule:
+//
+//	arg starts with "/"
+//	AND arg does NOT start with "/nonexistent"
+//	    (the conventional prefix for error-path scenarios)
+//	→ create a tmp dir at <t.TempDir>/<basename(arg)>, substitute.
+//
+// Scenarios that deliberately assert on a missing path MUST use
+// /nonexistent/* so the substitution is skipped. `launch-missing-dir`
+// follows this convention.
+//
+// This keeps the slug (which derives from basename) stable across
+// the substitution — "launch /home/user/my-app" gets rewritten to
+// "launch /tmp/xxx/my-app", and deriveSlug still returns "my-app".
+func materializeDirs(t *testing.T, args []string) []string {
+	t.Helper()
+	out := make([]string, len(args))
+	for i, a := range args {
+		if strings.HasPrefix(a, "/") && !strings.HasPrefix(a, "/nonexistent") {
+			tmp := t.TempDir()
+			real := filepath.Join(tmp, filepath.Base(a))
+			if err := os.MkdirAll(real, 0o755); err != nil {
+				t.Fatalf("materializeDirs: mkdir %s: %v", real, err)
+			}
+			out[i] = real
+		} else {
+			out[i] = a
+		}
+	}
+	return out
 }
 
 // argsFromInvocation extracts the argv after the subcommand word
