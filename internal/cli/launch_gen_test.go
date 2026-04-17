@@ -60,6 +60,25 @@ func TestScenariosLaunch(t *testing.T) {
 				},
 			},
 		},
+		{
+			ID:          "launch-multi-window-tab",
+			Tags:        []string{"common", "launch", "config", "multi-window"},
+			Story:       "An operator defines a tab with several windows in their\noverlay kommander.cue — e.g. a 'Workstation' tab with\nEditor, Terminal, and Logs windows open at launch. When\n'kommander launch <dir>' runs against that config, the\nbinary must create the tab AND every window — not just\nthe first.\n\nRegression guard for uib.3.A: a naive LaunchTab\nimplementation passes only windows[0].cmd to\n`kitten @ launch --type=tab` and stops. The second and\nthird windows never materialize. Production code with\nthat bug passed every prior scenario because no existing\nscenario used a multi-window tab.\n\nEffect shape mirrors kitten semantics: `--type=tab` with\none initial cmd (recorded as tab_created), then\nadditional windows via `--type=window --match\ntitle:<TabTitle>` (each recorded as window_created with\ntarget_tab set). A scenario that tests only presence of\neffects (not absence of extras) would pass a buggy\nimplementation that also spawned windows in the wrong\ntab — kitty_effects_exact is load-bearing here.",
+			Invocation:  "kommander launch /home/user/my-project",
+			HelpSummary: "Tab with multiple windows in the overlay:\n  # kommander.cue defines a tab with several windows\n  kommander launch /path/to/project\n  → Binary creates the tab with the first window as its\n    initial command, then spawns each additional window\n    into the same tab with explicit target.\n  → Subsequent windows carry window_created effects with\n    target_tab set; the initial window is folded into\n    tab_created (matching `kitten @ launch --type=tab`).",
+			Setup: scenario.Setup{
+				Files: map[string]string{"kommander.cue": "package kommander\n\nsession: tabs: [{\n    title: \"Workstation\"\n    windows: [\n        {title: \"Editor\", cmd: [\"nvim\"]},\n        {title: \"Terminal\", cmd: [\"bash\"]},\n        {title: \"Logs\", cmd: [\"tail\", \"-f\", \"/var/log/syslog\"]},\n    ]\n}]"},
+			},
+			Expected: scenario.Expected{
+				StdoutContains: []string{"session: cockpit-my-project", "config: kommander.cue"},
+				KittyEffects: []scenario.KittyEffect{
+					{Kind: "tab_created", Title: "Workstation"},
+					{Kind: "window_created", Title: "Terminal", TargetTab: "Workstation"},
+					{Kind: "window_created", Title: "Logs", TargetTab: "Workstation"},
+				},
+				KittyEffectsExact: true,
+			},
+		},
 	}
 	for _, sc := range cases {
 		sc := sc

@@ -162,4 +162,92 @@ scenarios: launch: [
 			    overlay was found and loaded.
 			"""
 	},
+	{
+		id:   "launch-multi-window-tab"
+		tags: ["common", "launch", "config", "multi-window"]
+
+		story: """
+			An operator defines a tab with several windows in their
+			overlay kommander.cue — e.g. a 'Workstation' tab with
+			Editor, Terminal, and Logs windows open at launch. When
+			'kommander launch <dir>' runs against that config, the
+			binary must create the tab AND every window — not just
+			the first.
+
+			Regression guard for uib.3.A: a naive LaunchTab
+			implementation passes only windows[0].cmd to
+			`kitten @ launch --type=tab` and stops. The second and
+			third windows never materialize. Production code with
+			that bug passed every prior scenario because no existing
+			scenario used a multi-window tab.
+
+			Effect shape mirrors kitten semantics: `--type=tab` with
+			one initial cmd (recorded as tab_created), then
+			additional windows via `--type=window --match
+			title:<TabTitle>` (each recorded as window_created with
+			target_tab set). A scenario that tests only presence of
+			effects (not absence of extras) would pass a buggy
+			implementation that also spawned windows in the wrong
+			tab — kitty_effects_exact is load-bearing here.
+			"""
+
+		setup: files: {
+			"kommander.cue": """
+				package kommander
+
+				session: tabs: [{
+				    title: "Workstation"
+				    windows: [
+				        {title: "Editor", cmd: ["nvim"]},
+				        {title: "Terminal", cmd: ["bash"]},
+				        {title: "Logs", cmd: ["tail", "-f", "/var/log/syslog"]},
+				    ]
+				}]
+				"""
+		}
+
+		invocation: "kommander launch /home/user/my-project"
+
+		expected: {
+			exit_code: 0
+			stdout_contains: [
+				"session: cockpit-my-project",
+				"config: kommander.cue",
+			]
+			// First window (Editor) is the tab's initial window
+			// under `kitten @ launch --type=tab`; it does not
+			// produce a separate window_created effect (mock.go:53
+			// elides nested initial windows from the effect stream
+			// deliberately — matches real kitty behavior). Second
+			// and third windows come in via LaunchWindow calls and
+			// SHOULD record window_created with explicit target_tab.
+			kitty_effects: [
+				{kind: "tab_created", title: "Workstation"},
+				{kind: "window_created", title: "Terminal", target_tab: "Workstation"},
+				{kind: "window_created", title: "Logs", target_tab: "Workstation"},
+			]
+			// Exact match guards two failure modes:
+			//   1. Implementation forgets to spawn windows[1:] at all
+			//      — Terminal + Logs missing, recorded < expected.
+			//   2. Implementation spawns windows[1:] in the wrong
+			//      tab (wrong target_tab) or spawns an extra
+			//      window_created for the initial Editor window —
+			//      recorded has an entry that doesn't match the
+			//      target_tab-scoped expectations, fails on
+			//      len(recorded) != len(expected).
+			kitty_effects_exact: true
+		}
+
+		help_summary: """
+			Tab with multiple windows in the overlay:
+			  # kommander.cue defines a tab with several windows
+			  kommander launch /path/to/project
+			  → Binary creates the tab with the first window as its
+			    initial command, then spawns each additional window
+			    into the same tab with explicit target.
+			  → Subsequent windows carry window_created effects with
+			    target_tab set; the initial window is folded into
+			    tab_created (matching `kitten @ launch --type=tab`).
+			"""
+	},
 ]
