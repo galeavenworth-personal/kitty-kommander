@@ -1,6 +1,10 @@
 # Beads local state
 .beads/
 
+# Go build artifacts — kommander binary is built via `go build`, never committed
+/kommander
+/cmd/kommander/kommander
+
 # Claude Code worktrees
 .claude/worktrees/
 
