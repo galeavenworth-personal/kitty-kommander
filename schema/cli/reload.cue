@@ -64,4 +64,55 @@ scenarios: reload: [
 			  → Exit 0 always; check `kommander doctor` after.
 			"""
 	},
+	{
+		id:   "reload-noop"
+		tags: ["basic", "reload", "idempotence"]
+
+		story: """
+			The operator runs reload on a session that's already
+			healthy (doctor would report 0 drift). Reload diffs
+			desired vs actual, finds them equal, and exits without
+			touching kitty at all. This is the defining property of
+			reconcile: running it on healthy state is a no-op, which
+			means running it twice in a row is safe.
+
+			Without this scenario, a regression that makes reload
+			destructive (kill all, respawn all, on every invocation)
+			passes every other scenario in the set — the user just
+			loses window state every time they run reload.
+			"""
+
+		// Healthy starting state — matches the doctor-healthy fixture.
+		setup: kitty_state: {
+			tabs: [
+				{title: "Cockpit", windows: []},
+				{title: "Driver", windows: [{cmd: "claude"}]},
+				{title: "Notebooks", windows: [{cmd: "euporie notebook"}]},
+				{title: "Dashboard", windows: [
+					{title: "DAG", cmd: "kommander-ui --dag"},
+					{title: "Sidebar", cmd: "kommander-ui --sidebar"},
+				]},
+			]
+		}
+
+		invocation: "kommander reload"
+
+		expected: {
+			exit_code: 0
+			stdout_contains: ["reconciled", "0 operations"]
+			// THE assertion this scenario exists for: reload must
+			// not have called the mock KittyController for any
+			// create / close / send / focus operation. `no_change`
+			// is the only effect recorded — absence of mutation IS
+			// the invariant under test.
+			kitty_effects: [{kind: "no_change"}]
+		}
+
+		help_summary: """
+			Reload is idempotent:
+			  kommander reload (on a healthy session)
+			  → exit 0, '0 operations', no kitty touched.
+			  → Safe to run twice; safe to run in cron.
+			"""
+	},
 ]

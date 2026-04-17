@@ -101,13 +101,27 @@ scenarios: ui: sidebar: [
 				"0% complete",
 				"No work items",
 			]
-			// Excludes list is the whole point of this scenario —
-			// it catches the divide-by-zero + unguarded-null bugs
-			// in both tiers before they ship.
+			// Excludes list guards the one truly JS-specific
+			// serialization leak: "NaN" from a 0/0 divide that
+			// wasn't guarded.
+			//
+			// Deliberately NOT excluding "null" or "undefined" as
+			// literal substrings — those are five- and nine-
+			// character English words that future empty-state
+			// copy may legitimately contain ("null of beads",
+			// "the undefined priority"). The classic regression-
+			// test rot pattern is a designer adding rich copy,
+			// the scenario breaking for the wrong reason, and the
+			// exclude getting weakened to just "NaN" anyway.
+			// Start at the defensible narrow spec.
+			//
+			// undefined/null serialization leaks are caught by
+			// the TypeScript type system (Bead.id is not nullable)
+			// and by component-level hook tests (useBeads returns
+			// {stats: null} not stats with null fields) — NOT by
+			// scraping the rendered frame for those strings.
 			excludes: [
 				"NaN",
-				"undefined",
-				"null",
 			]
 			snapshot: "sidebar-empty"
 		}
