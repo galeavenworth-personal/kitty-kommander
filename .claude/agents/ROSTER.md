@@ -24,6 +24,30 @@ Two rosters, one file. **Teams** are capability loadouts — durable units that 
 - Four-follower cap is real. A fifth teammate costs more coordination than it adds capacity.
 - Stale team state in `~/.claude/teams/<team>/` can shadow a fresh TeamCreate with misleading "already leading team" errors even after the directory is gone. If that fires, run TeamDelete once and retry; it clears the in-session cache.
 
+### Three-layer delegation taxonomy
+
+Leader has three distinct delegation surfaces; picking the wrong one costs context or capability.
+
+| Layer | Shape | When to use |
+|---|---|---|
+| **Team member** | Multi-turn, identity-filed, in-flight comms. | Implementation, adversarial review, multi-commit work. |
+| **Sub-agent** (Agent tool with subagent_type) | Bounded single-shot, throwaway identity, no in-flight comms. | Verification against source, codebase exploration, drafting a single artifact (scenario sketch, diff analysis). Leader privilege only — team members can't dispatch. |
+| **Leader direct** | Do it yourself. | Arbitration, identity authoring, operator interface, integrating outputs, single-tool-call mutations (bead filing, single git commit). |
+
+**Sub-agent discipline:**
+- **Target small and sharp.** Prefer sonnet/haiku-class agents. "Read files X/Y/Z; answer question Q as a structured response." Open-ended briefs produce drift.
+- **Include identity, not just task.** A one-line identity ("you are a scenario-idiom auditor") opens the right realm of outputs. `as a biologist` vs `as an accountant` — cheap token cost, large output shaping.
+- **Verify, don't accept-on-claim.** Sub-agents can report "done" without the work holding up. Verify the artifact against source before propagating. Same trust-but-verify rule that applies to teammates applies to sub-agents.
+- **Over-reliance is not-delegating.** If I find myself routing team-scoped work through sub-agents instead of the team, that's a failure mode — the team is where persistent-identity work lives. Sub-agents fill the gap between "leader task" and "team task."
+
+### Leader sub-agent dispatch log
+
+Record non-trivial sub-agent dispatches — lets leader retrospect on what sub-agenting did and didn't buy across missions.
+
+| Date | Mission | Agent type | Task | Result | Perf note |
+|---|---|---|---|---|---|
+
+
 ---
 
 # Teams
