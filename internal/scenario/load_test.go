@@ -28,7 +28,7 @@ func TestLoadScenarios(t *testing.T) {
 	}
 
 	expected := map[string]int{
-		"launch": 2,
+		"launch": 3,
 		"doctor": 2,
 		"reload": 2,
 	}
@@ -42,7 +42,7 @@ func TestLoadScenarios(t *testing.T) {
 	// Spot-check one scenario field per subcommand to confirm the
 	// decode worked on all three — not just that the count matched.
 	wantIDs := map[string][]string{
-		"launch": {"launch-basic", "launch-missing-dir"},
+		"launch": {"cue-config-driven-layout", "launch-basic", "launch-missing-dir"},
 		"doctor": {"doctor-drift-detected", "doctor-healthy"},
 		"reload": {"reload-noop", "reload-reconcile"},
 	}

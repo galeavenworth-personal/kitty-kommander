@@ -81,4 +81,78 @@ scenarios: launch: [
 			  → exit 1, no kitty launched, error on stderr.
 			"""
 	},
+	{
+		id:   "cue-config-driven-layout"
+		tags: ["common", "launch", "config"]
+
+		story: """
+			An operator wants a non-default session layout for a
+			specific project. They drop a kommander.cue file in the
+			project root describing a two-tab custom layout. When they
+			run 'kommander launch <dir>', the binary reads
+			kommander.cue from the project directory, unifies it with
+			the compiled-in default, and creates exactly the tabs the
+			overlay describes — not the default Cockpit/Driver/
+			Notebooks/Dashboard set.
+
+			This proves the binary's desired state is CUE-sourced at
+			runtime. If the binary ignores the overlay and uses a
+			compiled-in layout, the expected tab_created effects do
+			not match and the test fails. Negative assertion via
+			stdout_excludes guards against silent fallback: if the
+			default is used, the default tab titles appear in the
+			binary's startup output.
+			"""
+
+		// The overlay file content is verbatim — the test harness
+		// writes it to <tmp>/kommander.cue before invocation. CUE
+		// inside the string is not vet-validated at scenario-vet time;
+		// the binary's CUE loader validates it at runtime.
+		setup: files: {
+			"kommander.cue": """
+				package kommander
+
+				session: tabs: [
+				    {title: "Custom", windows: [{cmd: ["my-agent"]}]},
+				    {title: "Worker", windows: [{cmd: ["worker-process"]}]},
+				]
+				"""
+		}
+
+		invocation: "kommander launch /home/user/my-project"
+
+		expected: {
+			exit_code: 0
+			stdout_contains: [
+				"session: cockpit-my-project",
+				"config: kommander.cue",
+			]
+			// If the binary falls back to the compiled-in default,
+			// one or more default tab titles will appear in the
+			// "creating tab X" startup output — test fails here
+			// without waiting for the kitty_effects assertion.
+			stdout_excludes: [
+				"Cockpit",
+				"Driver",
+				"Notebooks",
+				"Dashboard",
+			]
+			kitty_effects: [
+				{kind: "tab_created", title: "Custom"},
+				{kind: "tab_created", title: "Worker"},
+			]
+		}
+
+		help_summary: """
+			Project-local override of the session layout:
+			  # Drop kommander.cue in project root with custom tabs
+			  kommander launch /path/to/project
+			  → Binary reads <project>/kommander.cue for session overlay.
+			  → Creates only the tabs the overlay describes; default
+			    (Cockpit, Driver, Notebooks, Dashboard) is NOT applied
+			    when overlay exists.
+			  → stdout reports 'config: kommander.cue' to confirm the
+			    overlay was found and loaded.
+			"""
+	},
 ]

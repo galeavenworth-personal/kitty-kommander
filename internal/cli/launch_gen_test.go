@@ -12,6 +12,24 @@ import (
 func TestScenariosLaunch(t *testing.T) {
 	cases := []scenario.Scenario{
 		{
+			ID:          "cue-config-driven-layout",
+			Tags:        []string{"common", "launch", "config"},
+			Story:       "An operator wants a non-default session layout for a\nspecific project. They drop a kommander.cue file in the\nproject root describing a two-tab custom layout. When they\nrun 'kommander launch <dir>', the binary reads\nkommander.cue from the project directory, unifies it with\nthe compiled-in default, and creates exactly the tabs the\noverlay describes — not the default Cockpit/Driver/\nNotebooks/Dashboard set.\n\nThis proves the binary's desired state is CUE-sourced at\nruntime. If the binary ignores the overlay and uses a\ncompiled-in layout, the expected tab_created effects do\nnot match and the test fails. Negative assertion via\nstdout_excludes guards against silent fallback: if the\ndefault is used, the default tab titles appear in the\nbinary's startup output.",
+			Invocation:  "kommander launch /home/user/my-project",
+			HelpSummary: "Project-local override of the session layout:\n  # Drop kommander.cue in project root with custom tabs\n  kommander launch /path/to/project\n  → Binary reads <project>/kommander.cue for session overlay.\n  → Creates only the tabs the overlay describes; default\n    (Cockpit, Driver, Notebooks, Dashboard) is NOT applied\n    when overlay exists.\n  → stdout reports 'config: kommander.cue' to confirm the\n    overlay was found and loaded.",
+			Setup: scenario.Setup{
+				Files: map[string]string{"kommander.cue": "package kommander\n\nsession: tabs: [\n    {title: \"Custom\", windows: [{cmd: [\"my-agent\"]}]},\n    {title: \"Worker\", windows: [{cmd: [\"worker-process\"]}]},\n]"},
+			},
+			Expected: scenario.Expected{
+				StdoutContains: []string{"session: cockpit-my-project", "config: kommander.cue"},
+				StdoutExcludes: []string{"Cockpit", "Driver", "Notebooks", "Dashboard"},
+				KittyEffects: []scenario.KittyEffect{
+					{Kind: "tab_created", Title: "Custom"},
+					{Kind: "tab_created", Title: "Worker"},
+				},
+			},
+		},
+		{
 			ID:          "launch-basic",
 			Tags:        []string{"basic", "launch"},
 			Story:       "An operator wants to launch a kitty-kommander instance for\ntheir project directory. The command reads the CUE session\nschema, derives the slug and socket path from the directory\nbasename, and launches kitty with the configured four tabs:\nCockpit, Driver, Notebooks, Dashboard.",
