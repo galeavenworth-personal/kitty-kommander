@@ -189,6 +189,9 @@ func emitExpected(b *bytes.Buffer, e scenario.Expected) {
 		}
 		fmt.Fprintf(b, "\t\t\t\t},\n")
 	}
+	if e.KittyEffectsExact {
+		fmt.Fprintf(b, "\t\t\t\tKittyEffectsExact: true,\n")
+	}
 	if len(e.JSONPaths) > 0 {
 		fmt.Fprintf(b, "\t\t\t\tJSONPaths: []scenario.JSONPath{\n")
 		for _, jp := range e.JSONPaths {

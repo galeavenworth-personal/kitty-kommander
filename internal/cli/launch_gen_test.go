@@ -27,6 +27,7 @@ func TestScenariosLaunch(t *testing.T) {
 					{Kind: "tab_created", Title: "Custom"},
 					{Kind: "tab_created", Title: "Worker"},
 				},
+				KittyEffectsExact: true,
 			},
 		},
 		{

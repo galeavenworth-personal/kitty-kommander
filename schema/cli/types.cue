@@ -134,6 +134,20 @@ import "github.com/galeavenworth-personal/kitty-kommander/schema/shared"
 	// via `kitty @ ls` in an end-to-end test).
 	kitty_effects: [...#KittyEffect]
 
+	// When true, the recorded effect list must EXACTLY equal
+	// kitty_effects (same length, same elements — ordering still
+	// unenforced, per assertKittyEffects convention). When false
+	// (default), the recorded list may be a superset of expected —
+	// presence-of-expected is checked, absence-of-unexpected is not.
+	//
+	// Use kitty_effects_exact when the scenario's point is "these
+	// effects and no others" — e.g. proving a fallback path does NOT
+	// also fire alongside the intended path. The default of false
+	// preserves contains-semantics for scenarios (like launch-basic,
+	// doctor-healthy) where extra effects would be a different bug
+	// caught by other scenarios.
+	kitty_effects_exact: bool | *false
+
 	// JSONPath assertions over `stdout` when the invocation emits
 	// JSON (e.g. `kommander inspect`, `kommander doctor --json`).
 	json_paths: [...#JSONPathCheck]

@@ -141,6 +141,13 @@ scenarios: launch: [
 				{kind: "tab_created", title: "Custom"},
 				{kind: "tab_created", title: "Worker"},
 			]
+			// Exact match: if the binary falls back to default AND
+			// creates the overlay's tabs (a "both sources" bug), the
+			// recorded effects would be a superset of expected — under
+			// contains-semantics this passes. Exact-match catches it.
+			// This is the load-bearing assertion for the 3.0 contract;
+			// stdout_excludes above is complementary, not primary.
+			kitty_effects_exact: true
 		}
 
 		help_summary: """

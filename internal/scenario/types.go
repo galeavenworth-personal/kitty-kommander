@@ -57,6 +57,11 @@ type Expected struct {
 	StderrContains []string      `json:"stderr_contains"`
 	StderrExcludes []string      `json:"stderr_excludes"`
 	KittyEffects   []KittyEffect `json:"kitty_effects"`
+	// KittyEffectsExact: when true, assertKittyEffects must require
+	// the recorded effect list to EXACTLY match KittyEffects (no extras).
+	// When false (default), the recorded list may be a superset.
+	// See schema/cli/types.cue #Expected.kitty_effects_exact.
+	KittyEffectsExact bool       `json:"kitty_effects_exact"`
 	JSONPaths      []JSONPath    `json:"json_paths"`
 }
 
