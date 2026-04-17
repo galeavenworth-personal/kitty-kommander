@@ -5,8 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/galeavenworth-personal/kitty-kommander/internal/kitty"
 )
 
 // RunLaunch implements `kommander launch <dir>`. Scenarios:
@@ -40,21 +38,7 @@ func RunLaunch(env *Env) (exitCode int, stdout, stderr string) {
 	fmt.Fprintf(&out, "session: %s\n", session)
 	fmt.Fprintf(&out, "socket: %s\n", socket)
 
-	tabs := []kitty.TabSpec{
-		{Title: "Cockpit"},
-		{Title: "Driver", Windows: []kitty.WindowSpec{{
-			Cmd: []string{"claude", "--agent", "cell-leader",
-				"--dangerously-skip-permissions"},
-		}}},
-		{Title: "Notebooks", Windows: []kitty.WindowSpec{{
-			Cmd: []string{"euporie", "notebook"},
-		}}},
-		{Title: "Dashboard", Windows: []kitty.WindowSpec{
-			{Title: "DAG", Cmd: []string{"kommander-ui", "--dag"}},
-			{Title: "Sidebar", Cmd: []string{"kommander-ui", "--sidebar"}},
-		}},
-	}
-	for _, t := range tabs {
+	for _, t := range desiredTabs() {
 		if err := env.Controller.LaunchTab(t); err != nil {
 			return 1, out.String(),
 				fmt.Sprintf("kommander launch: LaunchTab %q: %v\n", t.Title, err)
