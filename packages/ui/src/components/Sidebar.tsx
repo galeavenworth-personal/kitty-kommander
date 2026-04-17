@@ -42,7 +42,11 @@ export function Sidebar(): React.ReactElement {
         {ready.length === 0 ? (
           <Text dimColor color={theme.grey}>No work items</Text>
         ) : (
-          <Box flexDirection="column" className="ready-queue">
+          <Box
+            flexDirection="column"
+            className="ready-queue"
+            testId="ready-queue"
+          >
             {ready.map((item) => (
               <ListItem
                 key={item.id}
