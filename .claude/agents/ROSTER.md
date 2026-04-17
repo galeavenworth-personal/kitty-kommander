@@ -46,6 +46,7 @@ Record non-trivial sub-agent dispatches — lets leader retrospect on what sub-a
 
 | Date | Mission | Agent type | Task | Result | Perf note |
 |---|---|---|---|---|---|
+| 2026-04-17 | uib.3 | Plan (sonnet) | Draft cue-config-driven-layout + sidebar-reads-real-beads-state scenarios; flag schema extensions | ✓ used; Draft A committed at `c55542f` after arbitrating option (b), setup.files over proposed setup.config_file field | Sub-agent correctly flagged both schema-extension points rather than silently widening. "Scenario-idiom auditor" identity produced fidelity to existing CUE shape on first pass — identity framing earned its tokens. Leader-verified: existing `#Setup.files` covers Draft A with zero schema change, which sub-agent itself offered as option (b). Draft B deferred to uib.3.E onset (render_mode schema extension + gen-scenarios.mjs update). |
 
 
 ---
