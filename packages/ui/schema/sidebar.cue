@@ -74,9 +74,13 @@ scenarios: ui: sidebar: [
 			snapshot: "sidebar-basic"
 			playwright: {
 				screenshot: "sidebar-basic.png"
+				// Per schema/ui/types.cue:112-122 — locator keys SHOULD be
+				// [data-testid="..."] attribute selectors, not class names.
+				// Class selectors couple the scenario to styling decisions;
+				// a CSS rename breaks the test without the feature breaking.
 				locator_text: {
-					".health-bar":              "60%"
-					".ready-queue li:first-child": "Fix auth bug"
+					"[data-testid=\"health-bar\"]":                      "60%"
+					"[data-testid=\"ready-queue\"] li:first-child": "Fix auth bug"
 				}
 			}
 		}
