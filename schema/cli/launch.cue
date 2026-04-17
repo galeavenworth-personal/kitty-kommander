@@ -28,11 +28,17 @@ scenarios: launch: [
 				"session: cockpit-my-app",
 				"socket: unix:/tmp/kitty-kommander-my-app",
 			]
+			// `title` on a tab_created effect asserts the value of
+			// the `--tab-title` arg passed to `kitten @ launch`.
+			// NOT the title kitty ends up displaying. If kommander
+			// forgets --tab-title, the tab shows as the process
+			// name ("claude") and the mock records a tab_created
+			// with a different title — the test fails correctly.
 			kitty_effects: [
-				{kind: "tab_created", match: "Cockpit"},
-				{kind: "tab_created", match: "Driver"},
-				{kind: "tab_created", match: "Notebooks"},
-				{kind: "tab_created", match: "Dashboard"},
+				{kind: "tab_created", title: "Cockpit"},
+				{kind: "tab_created", title: "Driver"},
+				{kind: "tab_created", title: "Notebooks"},
+				{kind: "tab_created", title: "Dashboard"},
 			]
 		}
 

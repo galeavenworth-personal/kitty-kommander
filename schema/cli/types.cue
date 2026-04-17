@@ -77,9 +77,23 @@ import "github.com/galeavenworth-personal/kitty-kommander/schema/shared"
 	kitty_state?: #KittyFixture
 }
 
-// KittyFixture describes a snapshot of what `kitty @ ls` would return.
-// The mock KittyController in tests returns this verbatim; the doctor
-// command compares this (as desired state from CUE) against live state.
+// KittyFixture describes exactly what `kitty @ ls` returns — no more,
+// no less. This is the ACTUAL-STATE side of the doctor diff.
+//
+// Intentionally NOT a superset of the CUE session schema: the session
+// schema (see STACK-v2.md Layer 2) carries `ink?: bool` and
+// `location?: "vsplit" | …` fields that are kommander's internal
+// directives for HOW to spawn, not runtime attributes kitty retains.
+// Once kitty has launched the window, `kitty @ ls` returns title,
+// cmd, env, cwd — it does not echo back whether the window was
+// intended to be an Ink process or spawned with --location=vsplit.
+//
+// Consequence: a `doctor` scenario's `setup.kitty_state` can assert
+// what kitty SHOWS (tabs, titles, running commands), but cannot
+// assert "the desired session wanted this to be an Ink window."
+// Drift on ink/location is caught by the session-schema comparison
+// step inside the doctor command itself (implementation concern,
+// not scenario concern) — not by this fixture.
 #KittyFixture: {
 	tabs: [...#KittyTab]
 }
@@ -90,6 +104,9 @@ import "github.com/galeavenworth-personal/kitty-kommander/schema/shared"
 	windows: [...#KittyWindow]
 }
 
+// KittyWindow mirrors the subset of `kitty @ ls` window objects that
+// scenarios care about. Deliberately does NOT include `ink` or
+// `location` — see #KittyFixture doc.
 #KittyWindow: {
 	title?: string
 	cmd:    string | [...string]
@@ -123,16 +140,58 @@ import "github.com/galeavenworth-personal/kitty-kommander/schema/shared"
 }
 
 // KittyEffect is one observable change the command made (or should
-// have made) to the kitty instance. `no_change` is explicit — it lets
-// an error scenario state "this must not touch kitty", rather than
-// relying on the absence of other kinds.
+// have made) to the kitty instance. The mock KittyController records
+// effects as it receives calls; the generated Go test then compares
+// the recorded stream to the scenario's `expected.kitty_effects`.
+//
+// Each kind uses a different subset of fields. A single overloaded
+// `match` would collapse distinct semantics (text payload vs
+// selector vs created title) and permit false-passes where the test
+// records "something named X" while the command did the right thing
+// to the wrong window. Explicit fields per concern:
+//
+//   tab_created     → title (the tab title; must equal the
+//                     `--tab-title` arg passed to `kitten @ launch`)
+//   tab_focused     → selector (the `--match` arg passed to
+//                     `kitten @ focus-tab`)
+//   window_created  → title (new window's title) + target_tab (which
+//                     tab the window was created in)
+//   window_closed   → selector (the `--match` arg passed to
+//                     `kitten @ close-window`)
+//   text_sent       → selector (who received, e.g. "title:builder") +
+//                     text (the exact string sent to send-text's stdin)
+//   no_change       → no fields used; this asserts the command did
+//                     NOT call the mock for any kitty operation
+//
+// The mock enforces the field→kind mapping; the generator reads
+// these comments to produce targeted assertions.
 #KittyEffect: {
 	kind: "tab_created" | "window_created" | "window_closed" |
 		"text_sent" | "tab_focused" | "no_change"
 
-	// Tab title, window title, or text content to match. For
-	// `no_change` this field is meaningless and should be omitted.
-	match?: string
+	// For tab_created: the tab title (equals `--tab-title` arg).
+	// For window_created / window_closed: the window title.
+	// Unused for text_sent, tab_focused, no_change.
+	title?: string
+
+	// For window_created / window_closed: the tab the window was
+	// created or closed in. Scenarios MUST set this for window_*
+	// kinds — "window created somewhere" is a false-pass magnet
+	// (e.g. spawning the Sidebar window in the Cockpit tab instead
+	// of the Dashboard tab).
+	target_tab?: string
+
+	// The `--match` selector the command passed to `kitten @`.
+	// For tab_focused: `--match title:Dashboard`
+	// For window_closed: `--match title:builder`
+	// For text_sent: who received the text (`--match title:builder`)
+	// Unused for tab_created, window_created (their creation
+	// invocation does not take --match), and no_change.
+	selector?: string
+
+	// For text_sent: the exact string piped to send-text's stdin.
+	// Unused for every other kind.
+	text?: string
 
 	// Number of times this effect should have been recorded. Default
 	// 1. Higher values are rare but valid (e.g. multiple windows
@@ -141,12 +200,30 @@ import "github.com/galeavenworth-personal/kitty-kommander/schema/shared"
 }
 
 // JSONPathCheck asserts a JSON-emitting invocation produces the
-// expected shape. `path` is a JSONPath expression (e.g. `.tabs[0].title`,
-// `.drift[0].kind`). `contains` is a substring match against the
-// value at that path — tolerant to surrounding formatting.
+// expected shape. `path` is a JSONPath expression (e.g.
+// `.tabs[0].title`, `.drift[0].kind`). Exactly one match mode:
+//
+//   contains — substring match against stringified value. Tolerant
+//              but LOOSE: `"0"` is contained in `"10"` and `"20"`.
+//              Use for enum-like string values where partial match
+//              is actually what you want.
+//
+//   equals   — stringified-value equality. Strict. Use for integers
+//              and for exact enum values where substring would admit
+//              false positives.
+//
+//   matches  — regex match against stringified value. Use for
+//              structured-but-variable values (timestamps, hashes).
+//
+// Generator requires exactly one of {contains, equals, matches} to
+// be set per check. A check with zero or multiple is a cue vet
+// concern (enforced by the constraint below) — but CUE lacks a
+// clean "exactly one" operator, so the generator verifies.
 #JSONPathCheck: {
-	path:     string
-	contains: string
+	path:      string
+	contains?: string
+	equals?:   string
+	matches?:  string
 }
 
 // scenarios is the aggregate of every scenario across every

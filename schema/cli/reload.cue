@@ -47,8 +47,12 @@ scenarios: reload: [
 		expected: {
 			exit_code: 0
 			stdout_contains: ["reconciled", "spawned: Sidebar"]
+			// target_tab is required on window_* kinds — a window
+			// created "somewhere" is a false-pass magnet (spawning
+			// Sidebar in Cockpit instead of Dashboard passes the
+			// title-only check). The mock enforces tab context.
 			kitty_effects: [
-				{kind: "window_created", match: "Sidebar"},
+				{kind: "window_created", title: "Sidebar", target_tab: "Dashboard"},
 			]
 		}
 

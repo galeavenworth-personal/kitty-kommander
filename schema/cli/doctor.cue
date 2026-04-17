@@ -44,10 +44,14 @@ scenarios: doctor: [
 		expected: {
 			exit_code: 0
 			stdout_contains: ["healthy", "4/4 tabs", "0 drift"]
+			// `equals` on integer paths — substring would admit
+			// `.tabs_expected == 40` or `.drift_count == 10` as
+			// passing. The enum-valued `.status` stays `contains`
+			// since "healthy" is a stable full word.
 			json_paths: [
-				{path: ".status", contains:         "healthy"},
-				{path: ".tabs_expected", contains:  "4"},
-				{path: ".drift_count", contains:    "0"},
+				{path: ".status", contains:        "healthy"},
+				{path: ".tabs_expected", equals:   "4"},
+				{path: ".drift_count", equals:     "0"},
 			]
 		}
 
@@ -87,9 +91,13 @@ scenarios: doctor: [
 		expected: {
 			exit_code: 1
 			stdout_contains: ["drift", "Sidebar", "missing"]
+			// Enum-valued paths use `equals` — substring would admit
+			// `.status == "no_drift"` for a "drift" expectation, or
+			// `.drift[0].kind == "window_missing_expected"` for
+			// "window_missing". Titles/free text stay `contains`.
 			json_paths: [
-				{path: ".status", contains:          "drift"},
-				{path: ".drift[0].kind", contains:   "window_missing"},
+				{path: ".status", equals:            "drift"},
+				{path: ".drift[0].kind", equals:     "window_missing"},
 				{path: ".drift[0].tab", contains:    "Dashboard"},
 				{path: ".drift[0].expected", contains: "Sidebar"},
 			]

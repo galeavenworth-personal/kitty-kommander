@@ -54,16 +54,39 @@ import "github.com/galeavenworth-personal/kitty-kommander/schema/shared"
 
 // UIExpected bundles every tier's assertions into one block.
 //
-// - contains / excludes are checked in BOTH tiers (TUI lastFrame
-//   string match, web Playwright page text match).
-// - snapshot is the ink-testing-library golden file basename
-//   (stored at packages/ui/test/tui/__snapshots__/<snapshot>.txt).
-// - playwright is the web-tier block (golden screenshot +
-//   locator_text mapping).
+// - `contains` / `excludes` are BLUNT string checks against the
+//   full rendered output — Tier 2 checks `lastFrame()` (Ink's
+//   terminal buffer as one string), Tier 3 checks the visible
+//   text on the Playwright page as one string. Neither is
+//   region-scoped. A substring match is "exists somewhere in the
+//   frame," not "exists in the expected part of the frame."
 //
-// A scenario can set `snapshot` without `playwright` (hook or pure-
-// logic component) but every visible-surface scenario should set
-// both, so tiers 2 and 3 cross-check each other.
+// - `snapshot` is the Tier 2 golden (stored under
+//   packages/ui/test/tui/__snapshots__/<snapshot>.txt). First run
+//   writes the frame; subsequent runs diff. This is the targeted
+//   Tier 2 check — the one that catches "60% rendered in the wrong
+//   region" even though `contains: ["60%"]` is satisfied.
+//
+// - `playwright` is the Tier 3 block — pixel screenshot + CSS
+//   selector text map. `locator_text` is the Tier 3 equivalent of
+//   what `snapshot` is for Tier 2: targeted, region-scoped checks.
+//
+// TIER ASYMMETRY — intentional, named explicitly:
+//   Tier 2 has: contains, excludes, snapshot (golden-file diff)
+//   Tier 3 has: contains, excludes, screenshot (pixel diff),
+//               locator_text (selector-scoped text)
+// Tier 3 can targeted-check WITHOUT a golden file (locator_text);
+// Tier 2 cannot. If you want a region-scoped Tier 2 assertion,
+// rely on `snapshot` — there is no `tui_regions` equivalent.
+//
+// CONVENTIONS (not CUE-enforced, generator-enforced):
+// - Every visible-surface scenario sets at least `snapshot` OR a
+//   non-empty `contains`. A scenario with only `playwright` set
+//   is syntactically legal but passes Tier 2 trivially — the
+//   generator flags this unless tags include "tier-web-only".
+// - Prefer `snapshot` + `playwright.screenshot` together on any
+//   rendering scenario — Tier 2 catches layout in terminal space,
+//   Tier 3 catches layout in DOM space, neither is redundant.
 #UIExpected: {
 	contains: [...string]
 	excludes: [...string]
@@ -71,19 +94,36 @@ import "github.com/galeavenworth-personal/kitty-kommander/schema/shared"
 	playwright?: #PlaywrightAssertion
 }
 
-// PlaywrightAssertion drives the web tier of the test generator.
+// PlaywrightAssertion drives the Tier 3 web test generator.
 // Both fields are optional so a scenario can pick: golden screenshot
-// only, locator assertions only, or both. Most real scenarios want
-// both — locators catch semantic regressions, screenshots catch
-// layout regressions.
+// only, locator assertions only, or both. Most rendering scenarios
+// want both — locators catch semantic regressions (wrong text in
+// the right place), screenshots catch layout regressions (right
+// text in the wrong place).
 #PlaywrightAssertion: {
 	// Filename stored under packages/ui/test/web/screenshots/.
-	// Compared pixel-wise with a tolerance that matches Playwright
-	// defaults (suggest 0.1 maxDiffPixelRatio for text-heavy UI).
+	// Compared pixel-wise with Playwright's default tolerance
+	// (maxDiffPixelRatio 0.1 recommended for text-heavy UI).
 	screenshot?: string
 
-	// CSS selector → expected visible text. The generator produces
+	// CSS selector → expected visible text. Generator produces
 	// `await expect(page.locator(sel)).toHaveText(text)` per entry.
+	//
+	// SELECTOR CONVENTION: keys SHOULD be `[data-testid="..."]`
+	// attribute selectors, not class selectors. Class-based
+	// selectors (`.health-bar`) couple scenarios to the web
+	// adapter's styling decisions; a rename in CSS breaks the
+	// test without the feature being broken.
+	//
+	// The web adapter (packages/ui/src/web/adapters.tsx) is
+	// responsible for emitting `data-testid` attributes on every
+	// element a scenario references. The TUI adapter ignores
+	// them. Scenarios document the contract; the web adapter
+	// implements it.
+	//
+	// Class selectors are NOT forbidden — use them only when the
+	// class name is a stable part of the component's public API
+	// (e.g. a third-party theme hook), and document why inline.
 	locator_text?: {[string]: string}
 }
 
