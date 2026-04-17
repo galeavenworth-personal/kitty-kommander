@@ -65,6 +65,10 @@ Multiple kitty-kommander instances can run simultaneously on different project d
 - **beads (`bd`) is the issue tracker.** Agents create, claim, and close work items. The dashboard reads state via `bd --format=json`. The `.beads/` directory is gitignored (local state).
 - **Symlink-based installation.** Changes to files in this repo immediately take effect in `~/.claude/` and `~/.config/` after install. No copy/rebuild step needed.
 - **Use the inspector kitten for integration testing.** `kitty +kitten inspector ls` for tab structure, `inspector desktop` for install validation. Tests in `test/` use pytest with skip markers for headless CI.
+- **Reach for LSP, not grep, on Go and CUE code.** Two paths, same idea:
+  - **Go** — use the native `LSP` tool (wired via `gopls-lsp@claude-plugins-official` at user scope; `~/go/bin/gopls` v0.21+). Operations: `findReferences`, `goToDefinition`, `incomingCalls`, `hover`. Crosses packages cleanly (`cmd/` ↔ `internal/`) and follows into generated `*_gen_test.go` — critical in this scenariogen codebase.
+  - **CUE** — Claude Code's plugin marketplace has no `cue-lsp` plugin (checked Apr 2026; list: clangd/csharp/gopls/jdtls/kotlin/lua/php/pyright/ruby/rust-analyzer/swift/typescript). So we talk to `cue lsp` directly via `scripts/cue-lsp.py` — a stdlib-only JSON-RPC client. Cold start ~60ms. Subcommands: `hover | def | refs | symbols`. Crucially, `def` on a field surfaces **every sibling file that unifies into it** — e.g. `def` on `scenarios` in `schema/cli/launch.cue` returns launch.cue + doctor.cue + reload.cue + types.cue, because CUE field unification is invisible to grep.
+  - Grep is still correct for string literals, filenames, and comments. LSP is correct for symbols.
 
 ## Dashboard Data Flow
 
