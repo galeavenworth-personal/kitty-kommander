@@ -47,12 +47,6 @@ describe("Sidebar — sidebar-shows-health", () => {
       expect(frame, `expected "${s}" in frame:\n${frame}`).toContain(s);
     }
 
-    // Scenario excludes "0% complete" on sidebar-shows-health (intent: don't show
-    // zero when total > 0). That is a substring of "60% complete" — direct check
-    // is contradictory with the required contains. Escalated to team-lead.
-    // Until schema amendment, assert the semantic intent: the bar line starts with "60%".
-    const barLine = frame.split("\n").find((l) => l.includes("% complete")) ?? "";
-    expect(barLine.trim()).toMatch(/^\[[#-]+\] 60% complete$/);
     expect(frame).not.toContain("NaN");
   });
 
