@@ -49,7 +49,15 @@ func RunLaunch(env *Env) (exitCode int, stdout, stderr string) {
 
 	slug := deriveSlug(dir)
 	session := "cockpit-" + slug
-	socket := "unix:/tmp/kitty-kommander-" + slug
+	// Prefer the controller's actual socket (main populates env.Socket
+	// from the spawn slug OR $KITTY_LISTEN_ON in attach mode). Fall
+	// back to the slug-derived default when env.Socket is empty — this
+	// preserves the launch-basic scenario's stdout_contains literal
+	// (the mock harness leaves env.Socket empty).
+	socket := env.Socket
+	if socket == "" {
+		socket = "unix:/tmp/kitty-kommander-" + slug
+	}
 
 	tabs, overlayPath, err := desiredTabs(dir)
 	if err != nil {
@@ -58,6 +66,14 @@ func RunLaunch(env *Env) (exitCode int, stdout, stderr string) {
 
 	var out strings.Builder
 	fmt.Fprintf(&out, "session: %s\n", session)
+	// mode: line is intentionally omitted when env.Mode is empty —
+	// scenario tests don't set Mode (mock runs are spawn-like but
+	// launch-basic's stdout_contains does not assert on it), so we
+	// keep the line out of the mock path to avoid a scenario update.
+	// Production always sets Mode, so operators always see it.
+	if env.Mode != "" {
+		fmt.Fprintf(&out, "mode: %s\n", env.Mode)
+	}
 	fmt.Fprintf(&out, "socket: %s\n", socket)
 	if overlayPath != "" {
 		fmt.Fprintf(&out, "config: %s\n", overlayPath)

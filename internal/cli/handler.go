@@ -23,7 +23,9 @@ import (
 type Env struct {
 	// Args is argv after the subcommand word. E.g. for
 	// `kommander launch /home/user/my-app` the subcommand dispatcher
-	// strips "launch" and passes ["/home/user/my-app"].
+	// strips "launch" and passes ["/home/user/my-app"]. Flags like
+	// --attach are consumed by main BEFORE Args is populated here, so
+	// handlers see a flag-free positional-arg list.
 	Args []string
 
 	// Controller is the kitty abstraction. Tests pass a *kitty.Mock;
@@ -34,6 +36,22 @@ type Env struct {
 	// uses this if Args is empty. Tests set it to the tmp dir they
 	// created for file-system fixtures.
 	Workdir string
+
+	// Socket is the actual kitty socket the Controller is bound to, in
+	// `unix:/path` form. main populates it from the slug (spawn mode)
+	// OR $KITTY_LISTEN_ON (attach mode) so RunLaunch prints the TRUE
+	// socket, not one recomputed from the positional dir — which would
+	// diverge from the controller's real target in attach mode. Empty
+	// in scenario tests; launch.go falls back to the slug-derived path
+	// so launch-basic's stdout_contains continues to pass.
+	Socket string
+
+	// Mode is "spawn" (fresh kitty started by main) or "attach"
+	// (controller bound to an existing $KITTY_LISTEN_ON via --attach).
+	// Empty in scenario tests — mock runs are implicitly spawn-like;
+	// launch.go omits the mode line when Mode is empty so the
+	// launch-basic mock scenario's stdout_contains remains stable.
+	Mode string
 }
 
 // Handler is the signature every subcommand implements. The exit

@@ -72,7 +72,13 @@ func main() {
 		return
 	}
 
-	ctl, spawned, initialTabID, err := buildController(sub, rest)
+	// --attach is a launch-only flag; extract it here so handlers see a
+	// flag-free positional arg list. Silently ignored on other
+	// subcommands (doctor/reload don't branch on it today). Repeated
+	// occurrences are idempotent.
+	rest, attachMode := extractAttachFlag(rest)
+
+	ctl, spawned, initialTabID, socket, mode, err := buildController(sub, rest, attachMode)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -82,6 +88,8 @@ func main() {
 		Args:       rest,
 		Controller: ctl,
 		Workdir:    mustWd(),
+		Socket:     socket,
+		Mode:       mode,
 	}
 	code, stdout, stderr := entry.handler(env)
 	if stdout != "" {
@@ -117,34 +125,84 @@ func main() {
 	os.Exit(code)
 }
 
-// buildController selects the Controller implementation for a
-// subcommand. For `launch`, if $KITTY_LISTEN_ON is unset we spawn a
-// fresh kitty and construct against its socket. For `doctor`/`reload`
-// (and `launch` invoked from inside an existing kitty session), we
-// attach to $KITTY_LISTEN_ON via NewKittenExec, which errors if unset.
+// extractAttachFlag scans rest for `--attach` (exact match) and
+// returns rest with those occurrences removed plus a bool indicating
+// whether the flag was seen. Only the `--attach` bare form is
+// accepted — `--attach=true` / `--attach=1` are rejected elsewhere by
+// simply not matching, which causes the handler to see an unknown
+// positional arg and fail cleanly. Repeated `--attach` is idempotent.
 //
-// Returns (controller, spawnedCmd, initialTabID, err). The spawnedCmd
-// is non-nil only when we started a kitty process here; main uses it
-// to clean up the orphan if the handler later fails. The initialTabID
-// is the kitty-assigned id of the cwd-titled tab that kitty spawns on
-// startup — captured here, before the handler runs, so main can close
-// it post-handler and leave only the CUE-driven tabs. Zero when we
-// attached to an existing socket (no initial tab to close).
-func buildController(sub string, rest []string) (kitty.Controller, *exec.Cmd, int, error) {
-	if sub != "launch" || os.Getenv("KITTY_LISTEN_ON") != "" {
-		ctl, err := kitty.NewKittenExec()
-		return ctl, nil, 0, err
+// Flag position is intentionally not constrained: operators may write
+// `kommander launch --attach /tmp/foo` OR `kommander launch /tmp/foo
+// --attach` and both work. This matches the UNIX tradition for
+// boolean flags that have no arg to disambiguate from positionals.
+func extractAttachFlag(rest []string) ([]string, bool) {
+	out := rest[:0:0]
+	attach := false
+	for _, a := range rest {
+		if a == "--attach" {
+			attach = true
+			continue
+		}
+		out = append(out, a)
 	}
-	// launch from outside kitty — derive socket from the dir arg and
-	// spawn a fresh kitty.
-	if len(rest) == 0 {
-		// Let RunLaunch emit its usual "missing <dir>" error against a
-		// nil-free controller. We can't derive a socket, so attach mode
-		// would also fail. Construct a no-socket placeholder is wrong;
-		// instead, fall through to NewKittenExec which will error
-		// cleanly.
+	return out, attach
+}
+
+// buildController selects the Controller implementation and its
+// configuration for a subcommand.
+//
+// launch default (no --attach): ALWAYS spawn a fresh kitty from the
+// slug derived from <dir>. $KITTY_LISTEN_ON is deliberately ignored
+// here — the env var is set in every shell inside kitty, so treating
+// it as "consent to attach" silently pollutes unrelated kitty sessions
+// with duplicated tabs (the kitty-kommander-6g8 audit finding). The
+// operator explicitly opts into attach-mode with `--attach`.
+//
+// launch --attach: bind the controller to $KITTY_LISTEN_ON. Errors if
+// the env var is unset — we need a socket to talk to. No initial tab
+// is captured/closed (tabs pre-exist and belong to the operator).
+//
+// doctor, reload: unchanged. Require $KITTY_LISTEN_ON; error if unset.
+// Both operate on an existing session.
+//
+// Returns (controller, spawnedCmd, initialTabID, socket, mode, err).
+//   - spawnedCmd is non-nil only on the spawn path; main uses it to
+//     clean up the orphan if the handler later fails.
+//   - initialTabID is kitty's id for the cwd-titled tab on the spawn
+//     path; 0 otherwise.
+//   - socket is the `unix:/path` string the controller is bound to.
+//     Empty when err != nil or when we construct against an env-var
+//     controller whose socket we don't echo back to the caller (doctor,
+//     reload). RunLaunch prints this directly as its `socket:` line.
+//   - mode is "spawn" or "attach" on the launch path; empty for
+//     doctor/reload.
+func buildController(sub string, rest []string, attachMode bool) (kitty.Controller, *exec.Cmd, int, string, string, error) {
+	if sub != "launch" {
 		ctl, err := kitty.NewKittenExec()
-		return ctl, nil, 0, err
+		return ctl, nil, 0, "", "", err
+	}
+	if attachMode {
+		envSock := os.Getenv("KITTY_LISTEN_ON")
+		if envSock == "" {
+			return nil, nil, 0, "", "", fmt.Errorf(
+				"kommander launch --attach: KITTY_LISTEN_ON is not set; --attach requires an existing kitty session socket to bind to")
+		}
+		ctl := kitty.NewKittenExecForSocket(envSock)
+		// Attach mode: the existing kitty's tabs belong to the
+		// operator. We do NOT capture an "initial" tab to close —
+		// anything present is theirs.
+		return ctl, nil, 0, envSock, "attach", nil
+	}
+	// SPAWN MODE — the default. Ignore $KITTY_LISTEN_ON.
+	if len(rest) == 0 {
+		// No <dir> arg: let RunLaunch emit its own "missing <dir>"
+		// error. We need a Controller shape; return a dummy-safe
+		// KittenExec — since the handler will exit before any kitten @
+		// call, the socket value never matters. Passing a no-socket
+		// KittenExec would only cause trouble if execution reached a
+		// run() call, which it won't.
+		return kitty.NewKittenExecForSocket(""), nil, 0, "", "spawn", nil
 	}
 	dir := rest[0]
 	slug := deriveSlugForDir(dir)
@@ -154,20 +212,20 @@ func buildController(sub string, rest []string) (kitty.Controller, *exec.Cmd, in
 	// CLAUDE.md, we do not probe-then-delete; the operator decides.
 	socketPath := strings.TrimPrefix(socket, "unix:")
 	if _, err := os.Stat(socketPath); err == nil {
-		return nil, nil, 0, fmt.Errorf(
+		return nil, nil, 0, "", "", fmt.Errorf(
 			"kommander launch: socket exists at %s; another kommander may be running. Remove the file if it is stale, or use a different directory",
 			socketPath)
 	}
 	cmd, err := kitty.SpawnKitty(socket)
 	if err != nil {
-		return nil, nil, 0, fmt.Errorf("kommander launch: %w", err)
+		return nil, nil, 0, "", "", fmt.Errorf("kommander launch: %w", err)
 	}
 	if err := kitty.WaitForSocket(socket, 5*time.Second); err != nil {
 		// Spawn succeeded but socket never materialized — kitty is
 		// broken or the environment is unusual. Clean up before
 		// returning.
 		cleanupOrphan(cmd)
-		return nil, nil, 0, fmt.Errorf("kommander launch: %w", err)
+		return nil, nil, 0, "", "", fmt.Errorf("kommander launch: %w", err)
 	}
 	ctl := kitty.NewKittenExecForSocket(socket)
 	// Capture the initial tab's stable id NOW, before the handler's
@@ -186,7 +244,7 @@ func buildController(sub string, rest []string) (kitty.Controller, *exec.Cmd, in
 	if state, lerr := ctl.List(); lerr == nil && len(state.Tabs) >= 1 {
 		initialTabID = state.Tabs[0].ID
 	}
-	return ctl, cmd, initialTabID, nil
+	return ctl, cmd, initialTabID, socket, "spawn", nil
 }
 
 // deriveSlugForDir duplicates the slug rule from internal/cli/launch.go
