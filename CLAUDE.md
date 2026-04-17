@@ -12,7 +12,7 @@ A configuration + skills repo — not an application. It wires together Kitty te
 ./install.sh
 ```
 
-Checks dependencies, symlinks configs to `~/.config/kitty/` and `~/.tmux.conf`, installs skills to `~/.claude/skills/`, symlinks the inspector kitten to `~/.config/kitty/inspector`, symlinks `scripts/launch-cockpit.sh` to `~/.local/bin/kitty-kommander`, verifies the cell-leader agent definition at `.claude/agents/`, and installs beads hooks via `bd setup claude --project`. Existing non-symlink files are preserved (warned, not overwritten).
+Checks dependencies, symlinks configs to `~/.config/kitty/` and `~/.tmux.conf`, installs skills to `~/.claude/skills/`, symlinks the inspector kitten to `~/.config/kitty/inspector`, symlinks `scripts/launch-cockpit.sh` to `~/.local/bin/kitty-kommander`, writes a wrapper script to `~/.local/bin/kommander-ui` (baked with the repo path — re-run `install.sh` after moving the checkout), verifies the cell-leader agent definition at `.claude/agents/`, and installs beads hooks via `bd setup claude --project`. Existing non-symlink files are preserved (warned, not overwritten); the `kommander-ui` wrapper carries a sentinel line so re-runs can regenerate their own output while still preserving operator-authored scripts at that path.
 
 ## Architecture
 
