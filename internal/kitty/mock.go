@@ -101,6 +101,14 @@ func (m *Mock) FocusTab(selector string) error {
 	return nil
 }
 
+// CloseTab is a no-op on the mock — no scenario records tab_closed
+// today, and the only production caller (main.go's initial-tab
+// cleanup) only runs when we spawned a fresh kitty, which the mock
+// does not model. Kept here to satisfy the Controller interface.
+func (m *Mock) CloseTab(selector string) error {
+	return nil
+}
+
 func (m *Mock) List() (*State, error) {
 	s := m.state
 	return &s, nil

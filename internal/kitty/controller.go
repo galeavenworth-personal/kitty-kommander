@@ -42,6 +42,13 @@ type State struct {
 }
 
 type TabState struct {
+	// ID is kitty's stable tab id (integer, reported by `kitten @ ls`
+	// under .tabs[].id). Used by main.go to close the initial cwd-titled
+	// tab kitty spawns at startup, BEFORE LaunchTab adds the kommander
+	// tabs. Zero-value when the controller has no way to surface an id
+	// (mock returns 0 for recorded tabs — not exercised by the
+	// initial-tab-close path, which only runs on the SpawnKitty branch).
+	ID      int           `json:"id,omitempty"`
 	Title   string        `json:"title"`
 	Windows []WindowState `json:"windows"`
 }
@@ -82,6 +89,14 @@ type Controller interface {
 	// "title:Dashboard"). Scenarios record KittyEffect{kind:
 	// "tab_focused", selector: <selector>}.
 	FocusTab(selector string) error
+
+	// CloseTab closes tabs matched by selector (e.g. "id:3" or
+	// "title:Scratch"). Used by main.go's launch path to remove kitty's
+	// default cwd-titled tab after the CUE-driven tabs have been
+	// added. No scenario exercises this today — there is no
+	// "tab_closed" effect kind in schema/cli/types.cue; mock records
+	// nothing so existing kitty_effects assertions remain unaffected.
+	CloseTab(selector string) error
 
 	// List returns the current kitty state. In production this
 	// parses `kitten @ ls` JSON; the mock returns a configured State.
