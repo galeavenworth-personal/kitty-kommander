@@ -72,7 +72,7 @@ The leader may deviate from these if the mission warrants. Record deviation + re
 
 | Date | Mission | Bead | Activated subset | Result | Team perf note |
 |---|---|---|---|---|---|
-| 2026-04-17 | Steel thread: prove v2 stack end-to-end | `kitty-kommander-uib.3` | integrator, steel-thread-auditor | in progress | — |
+| 2026-04-17 | Steel thread: prove v2 stack end-to-end | `kitty-kommander-uib.3` | integrator, steel-thread-auditor | in progress | Leader error on c55542f (pre-emptive cross-bead schema decision) cost 2 teammate round-trips + 1 corrective commit; team protocol absorbed it cleanly — integrator challenged with structured evidence, auditor cleared the re-contract with adversarial probe, no drift. When the loop works, it corrects leader errors without leaking them downstream. See 0bfddaf for retrospective. |
 
 ## (Future teams — not yet minted)
 
@@ -140,7 +140,7 @@ _No deployment log — deployments are sessions, tracked implicitly by git histo
 
 | Date | Mission | Bead | Team | Result | Perf note |
 |---|---|---|---|---|---|
-| 2026-04-17 | Steel thread: prove v2 stack end-to-end | `kitty-kommander-uib.3` | dev-cell | in progress | — |
+| 2026-04-17 | Steel thread: prove v2 stack end-to-end | `kitty-kommander-uib.3` | dev-cell | in progress | Adversarial probe on f8f14d6 — disabled materializeFiles to verify cue-config-driven-layout reds for the right reasons, then named three class-of-bug follow-ons (CI drift enforcement, path traversal, empty-title DriftEntry). Identity's "verify don't trust" running cleanly. Initial clear on c55542f missed the "low regret" cost that materialized later — legitimate given info available, worth noting for future low-regret calls: cost becomes visible downstream, not at audit-time. |
 
 ---
 
@@ -155,7 +155,7 @@ _No deployment log — deployments are sessions, tracked implicitly by git histo
 
 | Date | Mission | Bead | Team | Result | Perf note |
 |---|---|---|---|---|---|
-| 2026-04-17 | Steel thread: prove v2 stack end-to-end | `kitty-kommander-uib.3` | dev-cell | in progress | — |
+| 2026-04-17 | Steel thread: prove v2 stack end-to-end | `kitty-kommander-uib.3` | dev-cell | in progress | Recon report (`deep: baseline`) was exemplary — 5 structural breaks, 3 unwired seams, 4 missing pieces with file:line evidence and live repro. Challenge on c55542f was precisely structured: scoped the problem, named the commit, cited lines, proposed three options with a lean, stood down. Exactly the escalation shape the identity describes. Missed adjacent issue (DAG fixture mismatch alongside the titling — both symptoms of same leader decision class), leader caught it; that's the review-layer working. `commit: f8f14d6 — uib.3.0 wired` landed tight-scoped, green, bead closed with ref. |
 
 ---
 
