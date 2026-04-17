@@ -1,48 +1,68 @@
 package cli
 
-import "github.com/galeavenworth-personal/kitty-kommander/internal/kitty"
+import (
+	"fmt"
 
-// desiredTabs is the canonical session layout kommander owns:
-// Cockpit (dynamic — no initial windows), Driver (claude agent),
-// Notebooks (euporie), Dashboard (DAG + Sidebar Ink apps).
+	"github.com/galeavenworth-personal/kitty-kommander/internal/kitty"
+	"github.com/galeavenworth-personal/kitty-kommander/internal/session"
+)
+
+// desiredTabs loads the canonical session layout from CUE. Source of
+// truth is schema/session/default.cue (embedded into the binary via
+// internal/session/loader.go). If the project directory contains a
+// kommander.cue overlay, the overlay's session.tabs fully replace the
+// default tabs — this is the simplest-replace contract proven by the
+// cue-config-driven-layout scenario.
 //
-// This is the source of truth for BOTH launch (which tab specs to
-// create) and doctor/reload (what kitty state to compare against).
-// Kept as a function so future scenarios that parameterize the
-// layout (--config custom.cue) have a clean extension point.
+// projectDir is the positional <dir> arg from `kommander launch`. An
+// empty string means "use defaults only" — appropriate for doctor and
+// reload call sites that don't yet accept a project arg and must
+// operate against the binary's own working directory.
 //
-// Matches the doctor-healthy scenario's kitty_state fixture exactly;
-// the healthy fixture IS the desired state. If the fixture and this
-// function diverge, the healthy scenario catches it (desired != actual
-// even though the fixture is supposed to be the healthy snapshot).
-func desiredTabs() []kitty.TabSpec {
-	return []kitty.TabSpec{
-		{Title: "Cockpit"},
-		{Title: "Driver", Windows: []kitty.WindowSpec{{
-			Cmd: []string{"claude", "--agent", "cell-leader",
-				"--dangerously-skip-permissions"},
-		}}},
-		{Title: "Notebooks", Windows: []kitty.WindowSpec{{
-			Cmd: []string{"euporie", "notebook"},
-		}}},
-		{Title: "Dashboard", Windows: []kitty.WindowSpec{
-			{Title: "DAG", Cmd: []string{"kommander-ui", "--dag"}},
-			{Title: "Sidebar", Cmd: []string{"kommander-ui", "--sidebar"}},
-		}},
+// overlayPath is the relative name ("kommander.cue") when an overlay
+// was loaded, empty otherwise. Callers use this to decide whether to
+// mention the config source in stdout.
+func desiredTabs(projectDir string) ([]kitty.TabSpec, string, error) {
+	s, overlayPath, err := session.Load(projectDir)
+	if err != nil {
+		return nil, "", fmt.Errorf("load session: %w", err)
 	}
+	return toTabSpecs(s), overlayPath, nil
 }
 
-// desiredTabsForDoctor is a view of desiredTabs stripped to the
-// subset doctor can observe in kitty @ ls. The doctor-healthy
-// fixture uses the short-form "claude" and "euporie notebook" for
-// window cmd — matching what production `kitty @ ls` would return
-// after the user shell resolves the full argv. So doctor compares
-// only the first-token match, not the full argv.
-//
-// This mirrors the schema's #KittyFixture doc comment: kitty @ ls
-// returns the running command shape, not the spawn directives.
-// Checking argv[0] equality (with the scenario's token) is the
-// tightest assertion that survives shell-level command expansion.
+// desiredTabsForDoctor is a view of desiredTabs used by doctor and
+// reload. Both operate against the ambient session — they don't take
+// a project dir arg today. They load the default layout. If a future
+// scenario wires doctor/reload to a specific project dir, this
+// signature grows an arg and the internal lookup adapts.
 func desiredTabsForDoctor() []kitty.TabSpec {
-	return desiredTabs()
+	s, _, err := session.Load("")
+	if err != nil {
+		// Embedded schema is compiled in; load failure here means
+		// the binary shipped broken. Returning nil keeps doctor from
+		// panicking; the empty-desired case surfaces as "all tabs
+		// are extra" which is a clear-enough signal in the report.
+		return nil
+	}
+	return toTabSpecs(s)
+}
+
+// toTabSpecs converts the session.Session shape (decoded from CUE)
+// into the kitty.TabSpec shape the Controller consumes. This is a
+// pure restructuring — no semantic changes, just two packages with
+// parallel shapes that need bridging.
+func toTabSpecs(s session.Session) []kitty.TabSpec {
+	out := make([]kitty.TabSpec, 0, len(s.Tabs))
+	for _, t := range s.Tabs {
+		spec := kitty.TabSpec{Title: t.Title}
+		for _, w := range t.Windows {
+			spec.Windows = append(spec.Windows, kitty.WindowSpec{
+				Title: w.Title,
+				Cmd:   w.Cmd,
+				Env:   w.Env,
+			})
+		}
+		out = append(out, spec)
+	}
+	return out
 }

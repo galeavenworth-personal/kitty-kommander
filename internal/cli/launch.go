@@ -8,13 +8,20 @@ import (
 )
 
 // RunLaunch implements `kommander launch <dir>`. Scenarios:
-// launch-basic, launch-missing-dir (schema/cli/launch.cue).
+// launch-basic, launch-missing-dir, cue-config-driven-layout
+// (schema/cli/launch.cue).
 //
 // Launch derives the session slug and socket path from the project
-// directory basename, validates the directory exists, and calls
-// Controller.LaunchTab for each of the four tabs: Cockpit, Driver,
-// Notebooks, Dashboard. It does NOT spawn agent panes inside Cockpit
-// — those come from `kommander pane` at runtime.
+// directory basename, validates the directory exists, loads the
+// desired tab layout from CUE (embedded default + optional per-project
+// kommander.cue overlay), and calls Controller.LaunchTab for each
+// resulting tab. It does NOT spawn agent panes inside Cockpit — those
+// come from `kommander pane` at runtime.
+//
+// When a kommander.cue overlay is loaded, stdout reports
+// `config: kommander.cue` so the operator can tell which layout the
+// binary used. Absence of this line means "default layout, no overlay
+// found" — useful for catching typos in the overlay filename.
 //
 // Error path: if <dir> doesn't exist, fail immediately with a clear
 // error on stderr and leave kitty untouched. Half-built sessions are
@@ -34,11 +41,19 @@ func RunLaunch(env *Env) (exitCode int, stdout, stderr string) {
 	session := "cockpit-" + slug
 	socket := "unix:/tmp/kitty-kommander-" + slug
 
+	tabs, overlayPath, err := desiredTabs(dir)
+	if err != nil {
+		return 1, "", fmt.Sprintf("kommander launch: %v\n", err)
+	}
+
 	var out strings.Builder
 	fmt.Fprintf(&out, "session: %s\n", session)
 	fmt.Fprintf(&out, "socket: %s\n", socket)
+	if overlayPath != "" {
+		fmt.Fprintf(&out, "config: %s\n", overlayPath)
+	}
 
-	for _, t := range desiredTabs() {
+	for _, t := range tabs {
 		if err := env.Controller.LaunchTab(t); err != nil {
 			return 1, out.String(),
 				fmt.Sprintf("kommander launch: LaunchTab %q: %v\n", t.Title, err)

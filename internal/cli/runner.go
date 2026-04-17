@@ -36,6 +36,17 @@ func RunScenario(t *testing.T, handler Handler, sc scenario.Scenario) {
 	// expected output.
 	args = materializeDirs(t, args)
 
+	// Stage Setup.Files inside the first materialized project dir.
+	// Scenarios that ship an overlay (e.g. cue-config-driven-layout
+	// dropping kommander.cue into the project root) need those files
+	// on disk before the handler runs — otherwise the binary's loader
+	// can't find them and the test goes red for the wrong reason.
+	// The convention: files map relative-path → contents, all paths
+	// resolve under the first path-shaped arg. Error-path scenarios
+	// (/nonexistent/*) don't carry Setup.Files, so the absence of a
+	// materialized dir for those is not a concern.
+	materializeFiles(t, args, sc.Setup.Files)
+
 	env := &Env{
 		Args:       args,
 		Controller: mock,
@@ -69,8 +80,45 @@ func RunScenario(t *testing.T, handler Handler, sc scenario.Scenario) {
 		}
 	}
 
-	assertKittyEffects(t, mock.Effects, sc.Expected.KittyEffects)
+	assertKittyEffects(t, mock.Effects, sc.Expected.KittyEffects, sc.Expected.KittyEffectsExact)
 	assertJSONPaths(t, stdout, sc.Expected.JSONPaths)
+}
+
+// materializeFiles writes Setup.Files into the first path-shaped arg's
+// directory. The path-shaped arg is the one materializeDirs rewrote —
+// it's both the tmp dir on disk AND the value the handler receives as
+// its positional arg, so the binary and the on-disk overlay agree on
+// the same directory.
+//
+// Scenarios SHOULD keep relative paths simple (e.g. "kommander.cue",
+// not "nested/path/kommander.cue") — nested dirs are supported via
+// MkdirAll but discouraged for readability. Empty files map is a no-op.
+func materializeFiles(t *testing.T, args []string, files map[string]string) {
+	t.Helper()
+	if len(files) == 0 {
+		return
+	}
+	projectDir := ""
+	for _, a := range args {
+		if strings.HasPrefix(a, "/") && !strings.HasPrefix(a, "/nonexistent") {
+			projectDir = a
+			break
+		}
+	}
+	if projectDir == "" {
+		t.Fatalf("materializeFiles: scenario has Setup.Files but no path-shaped arg to host them: %+v", args)
+	}
+	for rel, content := range files {
+		dst := filepath.Join(projectDir, rel)
+		if dir := filepath.Dir(dst); dir != projectDir {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatalf("materializeFiles: mkdir %s: %v", dir, err)
+			}
+		}
+		if err := os.WriteFile(dst, []byte(content), 0o644); err != nil {
+			t.Fatalf("materializeFiles: write %s: %v", dst, err)
+		}
+	}
 }
 
 // materializeDirs rewrites path-shaped positional args so the test
@@ -147,10 +195,19 @@ func kittyStateFromFixture(f scenario.KittyFixture) kitty.State {
 // expected effect — ordering is not enforced, since kitty operations
 // within a single subcommand invocation are often dispatched in
 // parallel or in an order the scenario doesn't care about.
-func assertKittyEffects(t *testing.T, recorded []kitty.Effect, expected []scenario.KittyEffect) {
+//
+// When exact is true (from the scenario's kitty_effects_exact field),
+// the recorded list's total length must equal the sum of expected
+// counts — no extras. This is the auditor-requested guard against
+// vacuous passes where a scenario asserts "Custom was created" but
+// the binary also created all four default tabs behind the assertion.
+// When exact is false (default), recorded may be a superset of expected.
+func assertKittyEffects(t *testing.T, recorded []kitty.Effect, expected []scenario.KittyEffect, exact bool) {
 	t.Helper()
 
 	// The no_change sentinel: exactly one element, kind == no_change.
+	// Absence-of-effect IS strict by definition; the `exact` flag is
+	// ignored for this sentinel (would be a redundant ask).
 	if len(expected) == 1 && expected[0].Kind == "no_change" {
 		if len(recorded) > 0 {
 			t.Errorf("expected no kitty effects; recorded %d: %+v", len(recorded), recorded)
@@ -158,6 +215,7 @@ func assertKittyEffects(t *testing.T, recorded []kitty.Effect, expected []scenar
 		return
 	}
 
+	totalWant := 0
 	for _, want := range expected {
 		if want.Kind == "no_change" {
 			t.Errorf("no_change effect can only appear as the sole effect in a scenario")
@@ -168,6 +226,7 @@ func assertKittyEffects(t *testing.T, recorded []kitty.Effect, expected []scenar
 		if wantCount == 0 {
 			wantCount = 1
 		}
+		totalWant += wantCount
 
 		got := 0
 		for _, rec := range recorded {
@@ -179,6 +238,11 @@ func assertKittyEffects(t *testing.T, recorded []kitty.Effect, expected []scenar
 			t.Errorf("kitty effect %+v: got %d match(es), want %d.\nrecorded: %+v",
 				want, got, wantCount, recorded)
 		}
+	}
+
+	if exact && len(recorded) != totalWant {
+		t.Errorf("kitty_effects_exact: recorded %d effect(s), expected exactly %d.\nrecorded: %+v\nexpected: %+v",
+			len(recorded), totalWant, recorded, expected)
 	}
 }
 
