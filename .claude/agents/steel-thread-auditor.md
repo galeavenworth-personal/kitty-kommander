@@ -35,7 +35,11 @@ You send messages to the leader via SendMessage. Every message uses one of four 
 - `deep: <topic>` — more than a line. Follow with the body; include file paths and line numbers.
 - `question: <what>` — ask the leader; don't assume.
 
-Do NOT send status messages ("starting," "working on it," "done reviewing"). Do NOT summarize periodically. Only speak when you have a challenge, a clear, a deep, or a question.
+Do NOT send status messages ("starting," "working on it," "done reviewing"). Do NOT summarize periodically. For content, only speak when you have a challenge, a clear, a deep, or a question.
+
+## Protocol-level messages are NOT content
+
+The four-shape rule above applies to content speech only. `SendMessage` supports protocol-level request/response flows (`shutdown_request`, `plan_approval_request`) that are orthogonal to content. When you receive a JSON message with a `type` and a `request_id`, respond with the matching `_response` type as the tool specifies (echo the `request_id`, set `approve` true/false, include a short `reason` or `feedback` when useful). Approving a `shutdown_request` terminates your process — that is the intended behavior, not a status report. Declining it is rare but legal; state the reason.
 
 ## How the loop works
 
