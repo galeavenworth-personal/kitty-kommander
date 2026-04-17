@@ -215,17 +215,23 @@ import "github.com/galeavenworth-personal/kitty-kommander/schema/shared"
 //   matches  — regex match against stringified value. Use for
 //              structured-but-variable values (timestamps, hashes).
 //
-// Mode-exclusivity is enforced at vet time via closed disjunction.
-// Each disjunct enumerates the exact fields allowed, so:
-//   {path: ".x", contains: "a", equals: "b"}  → vet error (two modes)
-//   {path: ".x", contains: "a", garbage: "z"} → vet error (extra field)
+// Vet-time enforcement (CUE v0.16.0, concrete-field usage — which is
+// how scenarios actually consume this type):
+//   {path, <one mode>}      → ok
+//   {path, <two modes>}     → vet error: field not allowed (empty disjunction)
+//   {path, <mode>, <typo>}  → vet error: field not allowed (empty disjunction)
+//   {path} alone            → vet error: some instances are incomplete
 //
-// Partial coverage: CUE's default unification does NOT flag
-// {path: ".x"} alone (no mode) as an error — a struct missing
-// required fields is "incomplete", not "invalid" under vet. The
-// generator therefore verifies the residual case (exactly-one-mode-
-// present) when producing the Go test. That's the one invariant this
-// type can't carry on its own.
+// The disjunction is fully load-bearing for concrete fields: every
+// wrong shape is caught by `cue vet` without flags. The generator
+// does not need to re-verify mode exclusivity.
+//
+// Caveat, for completeness: under HIDDEN fields (`_foo: #JSONPathCheck
+// & {path: ".x"}`), CUE permits the value to remain abstract and vet
+// passes. Scenarios do not use hidden fields for json_paths entries,
+// so this is a theoretical rather than practical gap. If a future
+// consumer needs concreteness under hidden fields too, add `cue vet -c`
+// (or the equivalent API flag) to the CI step.
 #JSONPathCheck: close({path: string, contains: string}) |
 	close({path: string, equals: string}) |
 	close({path: string, matches: string})
