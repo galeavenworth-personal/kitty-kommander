@@ -215,16 +215,20 @@ import "github.com/galeavenworth-personal/kitty-kommander/schema/shared"
 //   matches  — regex match against stringified value. Use for
 //              structured-but-variable values (timestamps, hashes).
 //
-// Generator requires exactly one of {contains, equals, matches} to
-// be set per check. A check with zero or multiple is a cue vet
-// concern (enforced by the constraint below) — but CUE lacks a
-// clean "exactly one" operator, so the generator verifies.
-#JSONPathCheck: {
-	path:      string
-	contains?: string
-	equals?:   string
-	matches?:  string
-}
+// Mode-exclusivity is enforced at vet time via closed disjunction.
+// Each disjunct enumerates the exact fields allowed, so:
+//   {path: ".x", contains: "a", equals: "b"}  → vet error (two modes)
+//   {path: ".x", contains: "a", garbage: "z"} → vet error (extra field)
+//
+// Partial coverage: CUE's default unification does NOT flag
+// {path: ".x"} alone (no mode) as an error — a struct missing
+// required fields is "incomplete", not "invalid" under vet. The
+// generator therefore verifies the residual case (exactly-one-mode-
+// present) when producing the Go test. That's the one invariant this
+// type can't carry on its own.
+#JSONPathCheck: close({path: string, contains: string}) |
+	close({path: string, equals: string}) |
+	close({path: string, matches: string})
 
 // scenarios is the aggregate of every scenario across every
 // subcommand file. CUE unifies partial definitions across files in
