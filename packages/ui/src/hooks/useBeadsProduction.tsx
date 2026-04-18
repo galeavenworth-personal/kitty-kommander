@@ -6,13 +6,48 @@ import type { ProjectStats, ReadyItem, Commit } from "../types.js";
 
 const EMPTY: UseBeadsResult = { stats: null, ready: [], commits: [] };
 
+// Per-command failure suppression: we log the FIRST failure for each
+// command so the operator sees WHICH dependency (bd vs. git vs. both) is
+// broken, then suppress subsequent failures of that same command to keep
+// the Dashboard quiet during extended outages. A successful invocation
+// clears the command's suppression entry, so if `bd` recovers and then
+// fails again later, that recurrence surfaces too.
+const failureLogged = new Set<string>();
+
+function logFailure(
+  command: string,
+  args: readonly string[],
+  exitCode: number | null,
+  stderr: string
+): void {
+  if (failureLogged.has(command)) return;
+  failureLogged.add(command);
+  const codeText = exitCode === null ? "?" : String(exitCode);
+  const argsJoined = args.join(" ");
+  const stderrTrimmed = stderr.trim();
+  process.stderr.write(
+    `kommander-ui: ${command} ${argsJoined} exited ${codeText}: ${stderrTrimmed}\n`
+  );
+}
+
 function runCommand(command: string, args: readonly string[]): string | null {
   try {
-    return execFileSync(command, args as string[], {
+    const out = execFileSync(command, args as string[], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     });
-  } catch {
+    failureLogged.delete(command);
+    return out;
+  } catch (err) {
+    const e = err as { status?: number | null; stderr?: Buffer | string };
+    const status = typeof e.status === "number" ? e.status : null;
+    const stderr =
+      typeof e.stderr === "string"
+        ? e.stderr
+        : e.stderr !== undefined
+          ? e.stderr.toString("utf8")
+          : "";
+    logFailure(command, args, status, stderr);
     return null;
   }
 }
