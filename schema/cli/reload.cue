@@ -29,14 +29,17 @@ scenarios: reload: [
 
 		// Setup mirrors the end-state of doctor-drift-detected —
 		// Dashboard is missing its Sidebar window. That's the
-		// precondition reload is meant to clear. Dashboard has no
-		// other windows (DAG deferred to uib.3.DAG), matching the
+		// precondition reload is meant to clear. Driver/Notebooks
+		// windows carry titles matching schema/session/default.cue per
+		// uib.3.C Option A (so they stay healthy and reload has exactly
+		// one thing to do: spawn Sidebar). Dashboard has no other
+		// windows (DAG deferred to uib.3.DAG), matching the
 		// doctor-drift-detected fixture shape.
 		setup: kitty_state: {
 			tabs: [
 				{title: "Cockpit", windows: []},
-				{title: "Driver", windows: [{cmd: "claude"}]},
-				{title: "Notebooks", windows: [{cmd: "euporie notebook"}]},
+				{title: "Driver", windows: [{title: "Driver", cmd: "claude"}]},
+				{title: "Notebooks", windows: [{title: "Notebooks", cmd: "euporie notebook"}]},
 				// Sidebar missing — reload spawns it.
 				{title: "Dashboard", windows: []},
 			]
@@ -83,11 +86,13 @@ scenarios: reload: [
 			"""
 
 		// Healthy starting state — matches the doctor-healthy fixture.
+		// Driver/Notebooks titled per uib.3.C Option A; see
+		// doctor-healthy for the fixture-shape rationale.
 		setup: kitty_state: {
 			tabs: [
 				{title: "Cockpit", windows: []},
-				{title: "Driver", windows: [{cmd: "claude"}]},
-				{title: "Notebooks", windows: [{cmd: "euporie notebook"}]},
+				{title: "Driver", windows: [{title: "Driver", cmd: "claude"}]},
+				{title: "Notebooks", windows: [{title: "Notebooks", cmd: "euporie notebook"}]},
 				{title: "Dashboard", windows: [
 					{title: "Sidebar", cmd: "kommander-ui --sidebar"},
 				]},

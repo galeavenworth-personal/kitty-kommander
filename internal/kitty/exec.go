@@ -110,7 +110,22 @@ func (k *KittenExec) run(args ...string) ([]byte, error) {
 
 func (k *KittenExec) LaunchTab(spec TabSpec) error {
 	args := []string{"launch", "--type=tab", "--tab-title", spec.Title}
+	// Pass --title for the first window when the CUE contract declares
+	// one. Kitty treats --title at launch as a persistent override that
+	// survives any OSC 0 escape the child process emits later (claude's
+	// spinner, euporie's process name), so the title kitten @ ls reports
+	// post-launch equals the CUE-declared title — which is what doctor's
+	// winKey compares against. uib.3.C Option A; see schema/cli/doctor.cue
+	// "doctor-healthy-real-titles" for the executable contract.
+	//
+	// The `--title` arg goes BEFORE the command argv because kitten @
+	// launch treats the first non-flag positional as the start of the
+	// child command — anything after that is argv for the child, not a
+	// kitten flag.
 	if len(spec.Windows) > 0 {
+		if spec.Windows[0].Title != "" {
+			args = append(args, "--title", spec.Windows[0].Title)
+		}
 		args = append(args, spec.Windows[0].Cmd...)
 	}
 	_, err := k.run(args...)

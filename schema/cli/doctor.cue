@@ -27,11 +27,19 @@ scenarios: doctor: [
 		// test runs. For live runs against a real kitty instance the
 		// test harness asserts `kitty @ ls` returns an equivalent
 		// shape before running the scenario.
+		//
+		// Windows carry titles matching schema/session/default.cue per
+		// uib.3.C Option A — production LaunchTab passes --title at
+		// launch, kitty's override survives any later OSC 0 escape from
+		// the process, so kitten @ ls reports the CUE-declared title
+		// verbatim. Driver/Notebooks untitled fixtures (pre-3.C) re-hid
+		// the winKey asymmetry under the mock and shipped a bug that
+		// reload amplified in the field.
 		setup: kitty_state: {
 			tabs: [
 				{title: "Cockpit", windows: []},
-				{title: "Driver", windows: [{cmd: "claude"}]},
-				{title: "Notebooks", windows: [{cmd: "euporie notebook"}]},
+				{title: "Driver", windows: [{title: "Driver", cmd: "claude"}]},
+				{title: "Notebooks", windows: [{title: "Notebooks", cmd: "euporie notebook"}]},
 				{title: "Dashboard", windows: [
 					{title: "Sidebar", cmd: "kommander-ui --sidebar"},
 				]},
@@ -76,9 +84,13 @@ scenarios: doctor: [
 		setup: kitty_state: {
 			tabs: [
 				{title: "Cockpit", windows: []},
-				{title: "Driver", windows: [{cmd: "claude"}]},
-				{title: "Notebooks", windows: [{cmd: "euporie notebook"}]},
+				{title: "Driver", windows: [{title: "Driver", cmd: "claude"}]},
+				{title: "Notebooks", windows: [{title: "Notebooks", cmd: "euporie notebook"}]},
 				// Sidebar missing from Dashboard — that is the drift.
+				// Driver/Notebooks remain healthy (titles match
+				// default.cue per Option A); without their titles the
+				// drift count would balloon to 3 and the json_paths
+				// check against .drift[0] would become nondeterministic.
 				// Dashboard has no other windows (DAG deferred to
 				// uib.3.DAG), so an empty window list is the correct
 				// fixture for the "Dashboard degraded" state.

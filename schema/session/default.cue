@@ -13,12 +13,24 @@
 // deferred to uib.3.DAG; when that ships, Dashboard will have two
 // windows and this file gets a second entry.
 //
-// Driver and Notebooks windows are INTENTIONALLY untitled. This
-// mirrors the prior hardcoded desiredTabs() layout exactly and
-// leaves the winKey asymmetry described by uib.3.C unresolved here.
-// 3.C will decide whether to fix that by adding explicit --titles
-// to desired windows OR by making doctor's winKey fuzzy-match
-// process titles. This file does not pre-empt that decision.
+// Driver and Notebooks windows carry explicit titles per uib.3.C
+// Option A. Production LaunchTab passes --title <Title> to kitten @
+// launch; kitty treats that as a persistent override beating any
+// OSC 0 escape the process emits (claude's "⠂ cell-leader" spinner,
+// euporie's "euporie-notebook" default). Verified via live kitty
+// probe pre-3.C: --title survived both a one-shot OSC 0 escape and a
+// 10Hz continuous stream across 40+ process-side rewrites. Doctor's
+// winKey therefore matches title-on-both-sides and drift stays at 0
+// under a healthy launch. See schema/cli/doctor.cue
+// "doctor-healthy-real-titles" for the executable contract.
+//
+// Trade-off: the kitty tab bar shows static CUE-declared titles
+// (Driver, Notebooks) instead of runtime process indicators. Accepted
+// cost — runtime liveness is visible in window contents, and the
+// operator-facing upside is a stable, CUE-declarable session identity.
+// Omit `title:` on any single window if dynamic titling is wanted for
+// that slot (at the cost of re-introducing winKey drift for that one
+// window, so consider whether it's worth it).
 package session
 
 default: #Session & {
@@ -31,6 +43,7 @@ default: #Session & {
 		{
 			title: "Driver"
 			windows: [{
+				title: "Driver"
 				cmd: ["claude", "--agent", "cell-leader",
 					"--dangerously-skip-permissions"]
 			}]
@@ -38,6 +51,7 @@ default: #Session & {
 		{
 			title: "Notebooks"
 			windows: [{
+				title: "Notebooks"
 				cmd: ["euporie", "notebook"]
 			}]
 		},

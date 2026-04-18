@@ -22,10 +22,10 @@ func TestScenariosReload(t *testing.T) {
 					Tabs: []scenario.KittyTab{
 						{Title: "Cockpit", Windows: []scenario.KittyWindow{}},
 						{Title: "Driver", Windows: []scenario.KittyWindow{
-							{Cmd: scenario.StringOrList([]string{"claude"})},
+							{Title: "Driver", Cmd: scenario.StringOrList([]string{"claude"})},
 						}},
 						{Title: "Notebooks", Windows: []scenario.KittyWindow{
-							{Cmd: scenario.StringOrList([]string{"euporie notebook"})},
+							{Title: "Notebooks", Cmd: scenario.StringOrList([]string{"euporie notebook"})},
 						}},
 						{Title: "Dashboard", Windows: []scenario.KittyWindow{
 							{Title: "Sidebar", Cmd: scenario.StringOrList([]string{"kommander-ui --sidebar"})},
@@ -51,10 +51,10 @@ func TestScenariosReload(t *testing.T) {
 					Tabs: []scenario.KittyTab{
 						{Title: "Cockpit", Windows: []scenario.KittyWindow{}},
 						{Title: "Driver", Windows: []scenario.KittyWindow{
-							{Cmd: scenario.StringOrList([]string{"claude"})},
+							{Title: "Driver", Cmd: scenario.StringOrList([]string{"claude"})},
 						}},
 						{Title: "Notebooks", Windows: []scenario.KittyWindow{
-							{Cmd: scenario.StringOrList([]string{"euporie notebook"})},
+							{Title: "Notebooks", Cmd: scenario.StringOrList([]string{"euporie notebook"})},
 						}},
 						{Title: "Dashboard", Windows: []scenario.KittyWindow{}},
 					},
