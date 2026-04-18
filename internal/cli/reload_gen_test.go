@@ -16,6 +16,7 @@ func TestScenariosReload(t *testing.T) {
 			Tags:        []string{"basic", "reload", "idempotence"},
 			Story:       "The operator runs reload on a session that's already\nhealthy (doctor would report 0 drift). Reload diffs\ndesired vs actual, finds them equal, and exits without\ntouching kitty at all. This is the defining property of\nreconcile: running it on healthy state is a no-op, which\nmeans running it twice in a row is safe.\n\nWithout this scenario, a regression that makes reload\ndestructive (kill all, respawn all, on every invocation)\npasses every other scenario in the set — the user just\nloses window state every time they run reload.",
 			Invocation:  "kommander reload",
+			RunModes:    []string{"mock"},
 			HelpSummary: "Reload is idempotent:\n  kommander reload (on a healthy session)\n  → exit 0, '0 operations', no kitty touched.\n  → Safe to run twice; safe to run in cron.",
 			Setup: scenario.Setup{
 				KittyState: &scenario.KittyFixture{
@@ -45,6 +46,7 @@ func TestScenariosReload(t *testing.T) {
 			Tags:        []string{"basic", "reload"},
 			Story:       "After doctor reports drift (the Sidebar window died and\nis missing from the Dashboard tab), the operator runs\nreload. It diffs desired vs actual, spawns just the one\nmissing window, and reports what it did. A follow-up\ndoctor invocation would now report healthy.",
 			Invocation:  "kommander reload",
+			RunModes:    []string{"mock"},
 			HelpSummary: "Reconcile session state:\n  kommander reload\n  → Diffs CUE desired state vs kitty actual state.\n  → Kills stale windows, spawns missing ones, restarts changed.\n  → Exit 0 always; check `kommander doctor` after.",
 			Setup: scenario.Setup{
 				KittyState: &scenario.KittyFixture{

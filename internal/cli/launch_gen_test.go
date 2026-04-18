@@ -16,6 +16,7 @@ func TestScenariosLaunch(t *testing.T) {
 			Tags:        []string{"common", "launch", "config"},
 			Story:       "An operator wants a non-default session layout for a\nspecific project. They drop a kommander.cue file in the\nproject root describing a two-tab custom layout. When they\nrun 'kommander launch <dir>', the binary reads\nkommander.cue from the project directory, unifies it with\nthe compiled-in default, and creates exactly the tabs the\noverlay describes — not the default Cockpit/Driver/\nNotebooks/Dashboard set.\n\nThis proves the binary's desired state is CUE-sourced at\nruntime. If the binary ignores the overlay and uses a\ncompiled-in layout, the expected tab_created effects do\nnot match and the test fails. Negative assertion via\nstdout_excludes guards against silent fallback: if the\ndefault is used, the default tab titles appear in the\nbinary's startup output.",
 			Invocation:  "kommander launch /home/user/my-project",
+			RunModes:    []string{"mock"},
 			HelpSummary: "Project-local override of the session layout:\n  # Drop kommander.cue in project root with custom tabs\n  kommander launch /path/to/project\n  → Binary reads <project>/kommander.cue for session overlay.\n  → Creates only the tabs the overlay describes; default\n    (Cockpit, Driver, Notebooks, Dashboard) is NOT applied\n    when overlay exists.\n  → stdout reports 'config: kommander.cue' to confirm the\n    overlay was found and loaded.",
 			Setup: scenario.Setup{
 				Files: map[string]string{"kommander.cue": "package kommander\n\nsession: tabs: [\n    {title: \"Custom\", windows: [{cmd: [\"my-agent\"]}]},\n    {title: \"Worker\", windows: [{cmd: [\"worker-process\"]}]},\n]"},
@@ -35,6 +36,7 @@ func TestScenariosLaunch(t *testing.T) {
 			Tags:        []string{"basic", "launch"},
 			Story:       "An operator wants to launch a kitty-kommander instance for\ntheir project directory. The command reads the CUE session\nschema, derives the slug and socket path from the directory\nbasename, and launches kitty with the configured four tabs:\nCockpit, Driver, Notebooks, Dashboard.",
 			Invocation:  "kommander launch /home/user/my-app",
+			RunModes:    []string{"mock"},
 			HelpSummary: "Launch a kommander instance:\n  kommander launch /path/to/project\n  → Opens kitty with Cockpit, Driver, Notebooks, Dashboard tabs.\n  → Derives session name + socket path from the directory basename.",
 			Expected: scenario.Expected{
 				StdoutContains: []string{"session: cockpit-my-app", "socket: unix:/tmp/kitty-kommander-my-app"},
@@ -51,6 +53,7 @@ func TestScenariosLaunch(t *testing.T) {
 			Tags:        []string{"error", "launch", "validation"},
 			Story:       "An operator invokes 'kommander launch' with a directory that\ndoes not exist. The command fails immediately with a clear\nerror pointing at the bad path, and does not touch kitty.\nA valid session is never partially created.",
 			Invocation:  "kommander launch /nonexistent/path",
+			RunModes:    []string{"mock"},
 			HelpSummary: "Error — directory does not exist:\n  kommander launch /bad/path\n  → exit 1, no kitty launched, error on stderr.",
 			Expected: scenario.Expected{
 				ExitCode:       1,
@@ -65,6 +68,7 @@ func TestScenariosLaunch(t *testing.T) {
 			Tags:        []string{"common", "launch", "config", "multi-window"},
 			Story:       "An operator defines a tab with several windows in their\noverlay kommander.cue — e.g. a 'Workstation' tab with\nEditor, Terminal, and Logs windows open at launch. When\n'kommander launch <dir>' runs against that config, the\nbinary must create the tab AND every window — not just\nthe first.\n\nRegression guard for uib.3.A: a naive LaunchTab\nimplementation passes only windows[0].cmd to\n`kitten @ launch --type=tab` and stops. The second and\nthird windows never materialize. Production code with\nthat bug passed every prior scenario because no existing\nscenario used a multi-window tab.\n\nEffect shape mirrors kitten semantics: `--type=tab` with\none initial cmd (recorded as tab_created), then\nadditional windows via `--type=window --match\ntitle:<TabTitle>` (each recorded as window_created with\ntarget_tab set). A scenario that tests only presence of\neffects (not absence of extras) would pass a buggy\nimplementation that also spawned windows in the wrong\ntab — kitty_effects_exact is load-bearing here.",
 			Invocation:  "kommander launch /home/user/my-project",
+			RunModes:    []string{"mock"},
 			HelpSummary: "Tab with multiple windows in the overlay:\n  # kommander.cue defines a tab with several windows\n  kommander launch /path/to/project\n  → Binary creates the tab with the first window as its\n    initial command, then spawns each additional window\n    into the same tab with explicit target.\n  → Subsequent windows carry window_created effects with\n    target_tab set; the initial window is folded into\n    tab_created (matching `kitten @ launch --type=tab`).",
 			Setup: scenario.Setup{
 				Files: map[string]string{"kommander.cue": "package kommander\n\nsession: tabs: [{\n    title: \"Workstation\"\n    windows: [\n        {title: \"Editor\", cmd: [\"nvim\"]},\n        {title: \"Terminal\", cmd: [\"bash\"]},\n        {title: \"Logs\", cmd: [\"tail\", \"-f\", \"/var/log/syslog\"]},\n    ]\n}]"},

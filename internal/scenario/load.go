@@ -77,5 +77,30 @@ func Load(rootDir string) (map[string][]Scenario, error) {
 		})
 	}
 
+	// Enforce cross-field invariants CUE cannot express cleanly. The
+	// #Scenario shape lets `invocation` default to "" so `steps`-
+	// shaped scenarios can omit it; this check catches the misuses
+	// CUE permits: both empty (nothing to execute) or both set
+	// (ambiguous — is the top-level invocation step 0, or a separate
+	// thing?). The mutex lives here rather than as a CUE disjunction
+	// to keep #Scenario unified across files; see schema/cli/types.cue
+	// `steps` docstring for the trade-off.
+	for subcmd, scs := range result {
+		for _, sc := range scs {
+			hasInv := sc.Invocation != ""
+			hasSteps := len(sc.Steps) > 0
+			switch {
+			case !hasInv && !hasSteps:
+				return nil, fmt.Errorf(
+					"scenario %s/%s: neither `invocation` nor `steps` set — at least one is required",
+					subcmd, sc.ID)
+			case hasInv && hasSteps:
+				return nil, fmt.Errorf(
+					"scenario %s/%s: both `invocation` and `steps` set — mutually exclusive (steps chain requires omitting top-level invocation)",
+					subcmd, sc.ID)
+			}
+		}
+	}
+
 	return result, nil
 }

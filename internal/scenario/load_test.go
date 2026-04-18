@@ -28,9 +28,10 @@ func TestLoadScenarios(t *testing.T) {
 	}
 
 	expected := map[string]int{
-		"launch": 4,
-		"doctor": 3,
-		"reload": 2,
+		"launch":      4,
+		"doctor":      3,
+		"reload":      2,
+		"integration": 1,
 	}
 	for subcmd, want := range expected {
 		got := len(scenarios[subcmd])
@@ -40,11 +41,12 @@ func TestLoadScenarios(t *testing.T) {
 	}
 
 	// Spot-check one scenario field per subcommand to confirm the
-	// decode worked on all three — not just that the count matched.
+	// decode worked on all four — not just that the count matched.
 	wantIDs := map[string][]string{
-		"launch": {"cue-config-driven-layout", "launch-basic", "launch-missing-dir", "launch-multi-window-tab"},
-		"doctor": {"doctor-drift-detected", "doctor-healthy", "doctor-healthy-real-titles"},
-		"reload": {"reload-noop", "reload-reconcile"},
+		"launch":      {"cue-config-driven-layout", "launch-basic", "launch-missing-dir", "launch-multi-window-tab"},
+		"doctor":      {"doctor-drift-detected", "doctor-healthy", "doctor-healthy-real-titles"},
+		"reload":      {"reload-noop", "reload-reconcile"},
+		"integration": {"launch-then-doctor-clean"},
 	}
 	for subcmd, ids := range wantIDs {
 		for i, id := range ids {

@@ -8,15 +8,30 @@
 package scenario
 
 // Scenario is one CLI invocation specification, loaded from CUE.
+//
+// 3.F additions: Steps and RunModes. Steps is empty for every pre-3.F
+// scenario (single Invocation). RunModes defaults to ["mock"] and is
+// honored by the generator — real_kitty variants carry //go:build
+// integration.
 type Scenario struct {
 	ID          string   `json:"id"`
 	Tags        []string `json:"tags"`
 	Story       string   `json:"story"`
 	Setup       Setup    `json:"setup"`
 	Invocation  string   `json:"invocation"`
+	Steps       []Step   `json:"steps,omitempty"`
 	Expected    Expected `json:"expected"`
 	HelpSummary string   `json:"help_summary"`
 	Golden      string   `json:"golden,omitempty"`
+	RunModes    []string `json:"run_modes"`
+}
+
+// Step is one invocation in a multi-step scenario. Mirrors
+// schema/cli/types.cue #Step. The runner executes steps in order
+// against a shared Controller.
+type Step struct {
+	Invocation string   `json:"invocation"`
+	Expected   Expected `json:"expected"`
 }
 
 // Setup stages the world before the command runs.
@@ -61,8 +76,9 @@ type Expected struct {
 	// the recorded effect list to EXACTLY match KittyEffects (no extras).
 	// When false (default), the recorded list may be a superset.
 	// See schema/cli/types.cue #Expected.kitty_effects_exact.
-	KittyEffectsExact bool       `json:"kitty_effects_exact"`
-	JSONPaths      []JSONPath    `json:"json_paths"`
+	KittyEffectsExact bool          `json:"kitty_effects_exact"`
+	JSONPaths         []JSONPath    `json:"json_paths"`
+	FinalKittyState   *KittyFixture `json:"final_kitty_state,omitempty"`
 }
 
 // KittyEffect matches the CUE discriminated shape. Only fields

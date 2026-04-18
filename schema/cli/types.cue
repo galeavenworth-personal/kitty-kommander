@@ -42,7 +42,37 @@ import "github.com/galeavenworth-personal/kitty-kommander/schema/shared"
 
 	// The exact invocation, copy-pasteable. Matches what goes in the
 	// generated Go test as the command under test.
-	invocation: string
+	//
+	// Default "" exists only so `steps`-shaped scenarios (see below)
+	// can omit `invocation`; every pre-3.F scenario sets this
+	// explicitly. The loader rejects scenarios that leave both
+	// `invocation` and `steps` empty, and scenarios that set both.
+	invocation: string | *""
+
+	// Multi-step scenarios, opt-in. When non-empty, the runner
+	// executes each step's invocation in order against a shared
+	// controller (and shared real-kitty instance under run_modes:
+	// "real_kitty"), applying each step's `expected` after that
+	// step's invocation returns. The scenario's TOP-LEVEL `expected`
+	// still applies after all steps complete — use it for
+	// post-chain assertions like `final_kitty_state`.
+	//
+	// `steps` and top-level `invocation` are MUTUALLY EXCLUSIVE: a
+	// scenario sets one or the other. Enforced at load time in
+	// internal/scenario/load.go, not in CUE — a clean disjunction
+	// here would require bifurcating #Scenario and updating every
+	// existing file, so the constraint lives in the loader instead.
+	// Trade-off: `cue vet` passes a misuse; `go generate
+	// ./internal/cli/` and `scenario.Load` catch it with a clear
+	// error.
+	//
+	// First consumer: schema/cli/integration.cue's
+	// launch-then-doctor-clean scenario (uib.3.F). The chain
+	// launch → doctor → reload IS the assertion — splitting it
+	// into three scenarios would decouple premise from assertion
+	// and silently break the auditor's "reload is noop after launch"
+	// guard.
+	steps?: [...#Step]
 
 	// Assertions. Generated tests check every non-empty field.
 	expected: #Expected
@@ -55,6 +85,39 @@ import "github.com/galeavenworth-personal/kitty-kommander/schema/shared"
 	// Optional golden file for exact output comparison. Path is
 	// relative to `testdata/golden/` (Go convention).
 	golden?: string
+
+	// Execution modes the scenario runs in. Default ["mock"] covers
+	// every pre-3.F scenario: the generated test builds a kitty.Mock,
+	// calls the handler in-process, asserts on recorded effects.
+	// Opting into ["real_kitty"] (or both) tells the generator to
+	// also emit a real-kitty test variant that spawns a fresh kitty
+	// process on an isolated socket, binds a production KittenExec
+	// controller, runs the scenario, and asserts final state via
+	// `expected.final_kitty_state`. Real-kitty tests carry the
+	// //go:build integration tag so `go test ./...` stays mock-only
+	// by default; `go test -tags=integration ./...` adds the real
+	// pass.
+	//
+	// Naming: "run_modes" (controller execution axis) is deliberately
+	// distinct from packages/ui/schema's "render_mode" (React render
+	// path axis) — two orthogonal mode concepts, distinct names to
+	// prevent cross-package confusion.
+	run_modes: [...("mock" | "real_kitty")] | *["mock"]
+}
+
+// Step is one invocation in a multi-step scenario. Fields mirror the
+// subset of #Scenario relevant to a single exec: invocation + its
+// own expected block. setup is scenario-level (not per-step) — stage
+// world state once, chain invocations against it.
+#Step: {
+	// The exact invocation for this step. Same shape as #Scenario.invocation.
+	invocation: string
+
+	// Assertions for this step. Post-step: stdout/stderr/exit_code/
+	// json_paths/kitty_effects all apply to THIS invocation's output.
+	// `final_kitty_state` is scenario-level only — put it on the
+	// scenario's top-level `expected`, not per-step.
+	expected: #Expected
 }
 
 // Setup bundles every way a scenario stages the world.
@@ -132,6 +195,18 @@ import "github.com/galeavenworth-personal/kitty-kommander/schema/shared"
 	// Effects the command must have produced on the kitty instance,
 	// as recorded by the mock KittyController (or observed live
 	// via `kitty @ ls` in an end-to-end test).
+	//
+	// Real-kitty mode (run_modes: "real_kitty") has no effect
+	// recorder — the production KittenExec shells out to `kitten @`
+	// and the kitty instance is the ground truth. Under real-kitty
+	// mode, the ONLY kitty_effects value honored today is
+	// [{kind: "no_change"}], which asserts the pre-step and
+	// post-step `kitten @ ls` snapshots are equal (no tabs or
+	// windows created, closed, or renamed). Other effect kinds
+	// on real-kitty steps are silently ignored in 3.F — if later
+	// integration scenarios need per-step tab_created / window_*
+	// assertions, bolt on an inferred-effect diff; don't fake the
+	// mock.Effects channel.
 	kitty_effects: [...#KittyEffect]
 
 	// When true, the recorded effect list must EXACTLY equal
@@ -151,6 +226,19 @@ import "github.com/galeavenworth-personal/kitty-kommander/schema/shared"
 	// JSONPath assertions over `stdout` when the invocation emits
 	// JSON (e.g. `kommander inspect`, `kommander doctor --json`).
 	json_paths: [...#JSONPathCheck]
+
+	// Final kitty state, asserted ONCE at end of scenario against
+	// `kitten @ ls`. Scenario-level assertion only — put this on
+	// the scenario's top-level `expected`, never on a #Step's
+	// expected (the runner reads only the top-level final state).
+	//
+	// Reuses #KittyFixture — the same shape that scenarios use as
+	// setup input for doctor/reload tests is semantically identical
+	// to the assertion side in real-kitty mode (what the production
+	// stack produced). Under run_modes: "mock", this field is
+	// ignored by the runner — the mock already staged its state via
+	// setup.kitty_state and assertions flow through kitty_effects.
+	final_kitty_state?: #KittyFixture
 }
 
 // KittyEffect is one observable change the command made (or should
