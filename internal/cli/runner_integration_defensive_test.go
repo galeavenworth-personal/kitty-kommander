@@ -154,3 +154,45 @@ func TestDiffFinalStateDynamicTabSkipsWindows(t *testing.T) {
 		t.Errorf("diffFinalState unexpectedly failed for dynamic tab (windows: []): %v", errs)
 	}
 }
+
+// TestExpectsNoChangeOnSingleNoChange pins the true branch of the
+// predicate that gates the real-kitty no_change assertion path. A step
+// with exactly one kitty_effects entry of kind "no_change" MUST cause
+// the runner to snapshot pre-state and diff against post-state; any
+// weakening of this predicate (e.g. requiring len == 0, or keying on a
+// different field) would silently disable the destructive-reload guard
+// for every integration scenario that uses it.
+func TestExpectsNoChangeOnSingleNoChange(t *testing.T) {
+	e := scenario.Expected{KittyEffects: []scenario.KittyEffect{{Kind: "no_change"}}}
+	if !expectsNoChange(e) {
+		t.Fatal("expectsNoChange returned false for [{Kind:\"no_change\"}]; no_change assertion path disabled")
+	}
+}
+
+// TestExpectsNoChangeFalseOnEmpty pins the false branch for the empty-
+// slice case. The reload step's Expected is the only place 3.F honors
+// kitty_effects; scenarios that don't declare kitty_effects must not
+// trip the no_change machinery (it would snapshot pre-state needlessly
+// and fail on any step that legitimately mutates session state).
+func TestExpectsNoChangeFalseOnEmpty(t *testing.T) {
+	e := scenario.Expected{KittyEffects: nil}
+	if expectsNoChange(e) {
+		t.Fatal("expectsNoChange returned true for empty KittyEffects; no_change guard is too eager")
+	}
+}
+
+// TestExpectsNoChangeFalseOnMixed pins the false branch for the multi-
+// entry case. types.cue #Expected.kitty_effects docstring reserves the
+// no_change kind as an exclusive marker — mixing it with tab_created or
+// window_closed is a fixture bug, not a partial-constraint. The
+// predicate must reject the mix rather than honoring the no_change half
+// and ignoring the rest.
+func TestExpectsNoChangeFalseOnMixed(t *testing.T) {
+	e := scenario.Expected{KittyEffects: []scenario.KittyEffect{
+		{Kind: "no_change"},
+		{Kind: "tab_created"},
+	}}
+	if expectsNoChange(e) {
+		t.Fatal("expectsNoChange returned true for mixed [no_change, tab_created]; non-exclusive marker silently ignored")
+	}
+}
