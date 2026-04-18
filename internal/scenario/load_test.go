@@ -107,3 +107,102 @@ func contains(s, sub string) bool {
 	}
 	return false
 }
+
+// TestValidateScenarioMutex exercises every branch of validateScenario's
+// invocation/steps mutex + run_modes presence check. validateScenario
+// has three failure conditions; only the RunModes branch had direct
+// coverage (TestLoadRejectsEmptyRunModes). Auditor finding #5 on
+// b15043a: with three branches and one test, two branches rely on the
+// CUE-loaded scenarios to exercise them transitively — a refactor that
+// swaps the mutex logic could pass every loader test while breaking
+// the error surface. This table pins each branch explicitly.
+//
+// Shape choices here:
+// - baseline Scenario carries valid RunModes so each row isolates the
+//   field it's testing (invocation/steps combos don't trip the RunModes
+//   check accidentally)
+// - positive rows return no error; negative rows return a specific
+//   substring in the error message so a future error-message rewrite
+//   that drops load-bearing language (e.g. "both ... set" losing the
+//   "exclusive" word) is caught here, not at a user report
+func TestValidateScenarioMutex(t *testing.T) {
+	base := Scenario{
+		ID:       "probe",
+		Expected: Expected{ExitCode: 0},
+		RunModes: []string{"mock"},
+	}
+
+	cases := []struct {
+		name       string
+		sc         Scenario
+		wantErr    bool
+		errMustHas string
+	}{
+		{
+			name: "invocation-only / valid",
+			sc: func() Scenario {
+				s := base
+				s.Invocation = "kommander launch /tmp/x"
+				return s
+			}(),
+			wantErr: false,
+		},
+		{
+			name: "steps-only / valid",
+			sc: func() Scenario {
+				s := base
+				s.Steps = []Step{{
+					Invocation: "kommander launch /tmp/x",
+					Expected:   Expected{ExitCode: 0},
+				}}
+				return s
+			}(),
+			wantErr: false,
+		},
+		{
+			name:       "neither invocation nor steps / rejected",
+			sc:         base,
+			wantErr:    true,
+			errMustHas: "neither `invocation` nor `steps` set",
+		},
+		{
+			name: "both invocation and steps / rejected",
+			sc: func() Scenario {
+				s := base
+				s.Invocation = "kommander launch /tmp/x"
+				s.Steps = []Step{{
+					Invocation: "kommander doctor",
+					Expected:   Expected{ExitCode: 0},
+				}}
+				return s
+			}(),
+			wantErr:    true,
+			errMustHas: "mutually exclusive",
+		},
+		{
+			name: "empty run_modes on otherwise-valid scenario / rejected",
+			sc: func() Scenario {
+				s := base
+				s.Invocation = "kommander launch /tmp/x"
+				s.RunModes = nil
+				return s
+			}(),
+			wantErr:    true,
+			errMustHas: "run_modes is empty",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateScenario("launch", tc.sc)
+			switch {
+			case tc.wantErr && err == nil:
+				t.Fatalf("expected error, got nil")
+			case !tc.wantErr && err != nil:
+				t.Fatalf("unexpected error: %v", err)
+			case tc.wantErr && tc.errMustHas != "" && !contains(err.Error(), tc.errMustHas):
+				t.Errorf("error %q missing substring %q", err.Error(), tc.errMustHas)
+			}
+		})
+	}
+}

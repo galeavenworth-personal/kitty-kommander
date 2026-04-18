@@ -48,16 +48,19 @@ func Generate(rootDir, outDir string) error {
 
 	for _, subcmd := range subcmds {
 		// Partition scenarios by mode. A scenario with run_modes
-		// containing "mock" (the default) goes into the standard
-		// gen_test.go; a scenario with "real_kitty" goes into the
-		// integration_gen_test.go under //go:build integration.
-		// A scenario with both is emitted to both files.
+		// containing "mock" goes into the standard gen_test.go; a
+		// scenario with "real_kitty" goes into the integration_gen_
+		// test.go under //go:build integration. A scenario with
+		// both is emitted to both files.
 		//
 		// The `integration` bucket is a special case: its scenarios
 		// never carry "mock" (they're real-kitty-only by design,
 		// and no RunIntegration mock handler exists), so the
 		// standard file is skipped entirely for that bucket.
-		mockScs, realScs := partitionByMode(scs[subcmd])
+		mockScs, realScs, perr := partitionByMode(scs[subcmd])
+		if perr != nil {
+			return fmt.Errorf("partition %s: %w", subcmd, perr)
+		}
 
 		if subcmd != "integration" && len(mockScs) > 0 {
 			out := filepath.Join(outDir, subcmd+"_gen_test.go")
@@ -85,16 +88,24 @@ func Generate(rootDir, outDir string) error {
 // partitionByMode splits scenarios by which mode(s) they run in.
 // A scenario with RunModes containing "mock" ends up in mockScs; with
 // "real_kitty" it lands in realScs; scenarios in both modes appear in
-// both slices. Zero-length RunModes is normalized to ["mock"] (CUE
-// default, but the loader may skip normalizing if the field was
-// decoded as nil — defensive).
-func partitionByMode(scs []scenario.Scenario) (mockScs, realScs []scenario.Scenario) {
+// both slices.
+//
+// Empty RunModes is a hard error, NOT normalized to ["mock"]. The
+// CUE schema's [_, ...T] guard and the loader's validateScenario
+// check both reject empty RunModes upstream, so this is pure belt-
+// and-braces — but a silent fallback to "mock" here would
+// reintroduce the upz-class silent-skip hazard at the generator
+// layer even after the loader enforces presence. Auditor finding #2
+// on b15043a; the defense cost is a few lines and the hazard of
+// its absence is a generator-layer bug that could hide for months.
+func partitionByMode(scs []scenario.Scenario) (mockScs, realScs []scenario.Scenario, err error) {
 	for _, s := range scs {
-		modes := s.RunModes
-		if len(modes) == 0 {
-			modes = []string{"mock"}
+		if len(s.RunModes) == 0 {
+			return nil, nil, fmt.Errorf(
+				"scenario %q: RunModes is empty — generator requires an explicit non-empty [\"mock\", \"real_kitty\"] slice (loader should have caught this upstream)",
+				s.ID)
 		}
-		for _, m := range modes {
+		for _, m := range s.RunModes {
 			switch m {
 			case "mock":
 				mockScs = append(mockScs, s)
@@ -103,7 +114,7 @@ func partitionByMode(scs []scenario.Scenario) (mockScs, realScs []scenario.Scena
 			}
 		}
 	}
-	return
+	return mockScs, realScs, nil
 }
 
 // writeIntegrationTestFile emits the real_kitty-mode test file for a

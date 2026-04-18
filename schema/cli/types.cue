@@ -243,13 +243,19 @@ import "github.com/galeavenworth-personal/kitty-kommander/schema/shared"
 	// recorder — the production KittenExec shells out to `kitten @`
 	// and the kitty instance is the ground truth. Under real-kitty
 	// mode, the ONLY kitty_effects value honored today is
-	// [{kind: "no_change"}], which asserts the pre-step and
-	// post-step `kitten @ ls` snapshots are equal (no tabs or
-	// windows created, closed, or renamed). Other effect kinds
-	// on real-kitty steps are silently ignored in 3.F — if later
-	// integration scenarios need per-step tab_created / window_*
-	// assertions, bolt on an inferred-effect diff; don't fake the
-	// mock.Effects channel.
+	// [{kind: "no_change"}], which asserts the pre-step and post-
+	// step `kitten @ ls` snapshots are equal on (title, cmd, pid)
+	// for every window. PID equality is load-bearing: a destructive
+	// reload that closes + respawns every window produces identical
+	// titles and cmds (same session spec) but fresh PIDs — title-
+	// and-cmd-only equality would silently accept that as a noop,
+	// defeating the auditor's "reload-immediately-after-launch is
+	// idempotent" guard. Real-kitty `no_change` fails PID churn
+	// even when the post-snapshot looks shape-identical. Other
+	// effect kinds on real-kitty steps are silently ignored in
+	// 3.F — if later integration scenarios need per-step
+	// tab_created / window_* assertions, bolt on an inferred-
+	// effect diff; don't fake the mock.Effects channel.
 	kitty_effects: [...#KittyEffect]
 
 	// When true, the recorded effect list must EXACTLY equal
