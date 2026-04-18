@@ -54,13 +54,13 @@ func TestScenariosIntegration(t *testing.T) {
 					Tabs: []scenario.KittyTab{
 						{Title: "Cockpit", Windows: []scenario.KittyWindow{}},
 						{Title: "Driver", Windows: []scenario.KittyWindow{
-							{Title: "Driver", Cmd: scenario.StringOrList([]string{"claude", "--agent", "cell-leader", "--dangerously-skip-permissions"})},
+							{Title: "Driver", Cmd: scenario.StringOrList(nil)},
 						}},
 						{Title: "Notebooks", Windows: []scenario.KittyWindow{
-							{Title: "Notebooks", Cmd: scenario.StringOrList([]string{"euporie", "notebook"})},
+							{Title: "Notebooks", Cmd: scenario.StringOrList(nil)},
 						}},
 						{Title: "Dashboard", Windows: []scenario.KittyWindow{
-							{Title: "Sidebar", Cmd: scenario.StringOrList([]string{"kommander-ui", "--sidebar"})},
+							{Title: "Sidebar", Cmd: scenario.StringOrList(nil)},
 						}},
 					},
 				},

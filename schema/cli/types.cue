@@ -169,6 +169,27 @@ import "github.com/galeavenworth-personal/kitty-kommander/schema/shared"
 // Drift on ink/location is caught by the session-schema comparison
 // step inside the doctor command itself (implementation concern,
 // not scenario concern) — not by this fixture.
+//
+// Runner assertion contract: field-exact / no-coercion. Every field a
+// fixture declares (title, windows-layout, cmd-when-present) must
+// match live kitten @ ls exactly. Fields it doesn't declare aren't
+// asserted — and "aren't asserted" does NOT collapse to "match empty
+// string" or "match anything"; the absent-vs-empty-vs-declared
+// distinction is load-bearing (uib.3.C's OSC 0 regression would look
+// like `title: ""` on the live side, and a fixture declaring
+// `title: "Driver"` must fail that, not silently pass).
+//
+// Dynamic-tab semantic: a tab declaring `windows: []` (empty) means
+// "runtime-owned window set — don't assert window count or content
+// for this tab." This matches the session schema's `dynamic: true`
+// marker (which doctor honors). Real kitty always creates a holding
+// shell per tab, so asserting zero windows literally would be
+// impossible; the empty-list declaration instead tells the runner to
+// short-circuit the per-tab window loop. Tab-count/title assertion
+// at the enclosing tabs level still fires — a Cockpit tab that went
+// genuinely missing fails "tabs length mismatch" one level up, not
+// "Cockpit has wrong window count." First consumer: schema/cli/
+// integration.cue's launch-then-doctor-clean final_kitty_state.
 #KittyFixture: {
 	tabs: [...#KittyTab]
 }
@@ -182,9 +203,19 @@ import "github.com/galeavenworth-personal/kitty-kommander/schema/shared"
 // KittyWindow mirrors the subset of `kitty @ ls` window objects that
 // scenarios care about. Deliberately does NOT include `ink` or
 // `location` — see #KittyFixture doc.
+//
+// `cmd` is OPTIONAL because real-kitty scenarios may want to assert
+// on titles only. `kitten @ ls` returns resolved argv (shebangs
+// expanded, wrappers expanded) which differs from the user-facing
+// `cmd` a CUE author writes. The runner's field-exact rule (assert
+// declared fields, don't assert absent ones) means dropping `cmd` in
+// a fixture is the correct way to skip cmd-matching for that window.
+// Mock scenarios continue to declare `cmd` — the mock controller
+// records exactly what was requested, so declared cmd always matches.
+// See kitty-kommander-433 for the argv0-vs-cmd architectural follow-on.
 #KittyWindow: {
 	title?: string
-	cmd:    string | [...string]
+	cmd?:   string | [...string]
 	env?:   {[string]: string}
 }
 

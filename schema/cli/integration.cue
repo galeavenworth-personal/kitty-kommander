@@ -110,25 +110,45 @@ scenarios: integration: [
 		]
 
 		// Post-chain assertion: kitten @ ls returns the canonical
-		// four-tab Option A layout verbatim. Titles + cmds match
-		// schema/session/default.cue exactly, so doctor would
-		// report healthy again (redundant with step 2's assertion,
-		// but this checks the SHAPE of the state, not just doctor's
-		// interpretation of it — catches a broken doctor that would
-		// silently report healthy on a wrong state).
+		// four-tab Option A layout verbatim. ONLY titles are asserted
+		// here — cmd is deliberately absent. Option A's thesis is that
+		// titles are the install-independent identity layer (claude's
+		// OSC 0 spinner, euporie's self-rename, kitty's --title arg
+		// winning the race — all title surface). Cmds via kitten @ ls
+		// are resolved argv from the kernel and necessarily differ
+		// from the user-facing CUE declaration: euporie shows as
+		// `/usr/bin/python3 /home/.../euporie notebook` (shebang);
+		// kommander-ui shows as `node --import=tsx ./bin/kommander-ui
+		// --sidebar` (install.sh wrapper). Making the integration
+		// scenario assert on resolved argv would couple the contract
+		// to install.sh's wrapper choice and the operator's python/
+		// node install location — the opposite of Option A. Field-
+		// exact / no-coercion still holds: every field this fixture
+		// DECLARES (title, windows-layout) must match live state
+		// exactly; fields it doesn't declare (cmd) aren't asserted.
+		// The argv0-vs-cmd architectural question is kitty-kommander-
+		// 433 (P3 follow-on) — deliberately out of scope for 3.F.
+		//
+		// Cockpit's `windows: []` is the dynamic-tab marker. Real
+		// kitty always creates a holding shell when a tab is
+		// launched without an explicit window; production doctor
+		// treats dynamic tabs' window set as operator-owned, not
+		// CUE-declared. The runner mirrors this: empty `windows` in
+		// a fixture means "don't assert window count or content for
+		// this tab" (safe because a genuinely-missing Cockpit fails
+		// the tab-count assertion one level up).
 		expected: {
 			final_kitty_state: {
 				tabs: [
 					{title: "Cockpit", windows: []},
 					{title: "Driver", windows: [
-						{title: "Driver", cmd: ["claude", "--agent",
-							"cell-leader", "--dangerously-skip-permissions"]},
+						{title: "Driver"},
 					]},
 					{title: "Notebooks", windows: [
-						{title: "Notebooks", cmd: ["euporie", "notebook"]},
+						{title: "Notebooks"},
 					]},
 					{title: "Dashboard", windows: [
-						{title: "Sidebar", cmd: ["kommander-ui", "--sidebar"]},
+						{title: "Sidebar"},
 					]},
 				]
 			}
