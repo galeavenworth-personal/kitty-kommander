@@ -14,12 +14,17 @@
 //   │ f028764 feat:…   │
 //   └──────────────────┘
 //
-// Two scenarios here are the steel thread's UI half:
+// Three scenarios here are the steel thread's UI half:
 //   - `sidebar-shows-health` proves the happy path renders every
-//     block from a realistic beads fixture.
+//     block from a realistic beads fixture (fixture mode).
 //   - `sidebar-empty-project` proves the bootstrap-state (total: 0)
 //     renders zero, not NaN — the single most common empty-state bug
-//     in dashboards that compute percent = closed / total.
+//     in dashboards that compute percent = closed / total (fixture mode).
+//   - `sidebar-reads-real-beads-state` proves the PRODUCTION data
+//     path: useBeads shells bd + git log, polls every 30s, and the
+//     entry stays alive. This is the 3.E scenario; catches the 3.D
+//     regression where the Dashboard tab died on first paint
+//     (production mode).
 package ui
 
 scenarios: ui: sidebar: [
@@ -136,6 +141,64 @@ scenarios: ui: sidebar: [
 				"NaN",
 			]
 			snapshot: "sidebar-empty"
+		}
+	},
+	{
+		id:   "sidebar-reads-real-beads-state"
+		tags: ["production", "sidebar"]
+
+		story: """
+			The operator launches `kommander-ui --sidebar` under the
+			cockpit Dashboard tab. useBeads shells the three data
+			sources on mount (bd stats for project health, bd ready
+			for the queue, git log for recent commits), then re-shells
+			every 30 seconds so the sidebar reflects work as agents
+			close beads. The process stays alive between polls — the
+			3.D regression was renderSidebar() returning synchronously,
+			killing the Dashboard tab on first paint.
+			"""
+
+		// Production-mode scenarios name the subject hook (or entry)
+		// in `component` — no separate `hook` field on the assertion.
+		// See types.cue commentary on why the duplication was dropped.
+		component:   "useBeads"
+		render_mode: "production"
+
+		production: {
+			// args_contains (substring match) rather than exact args:
+			// the scenario asserts INTENT ("useBeads shells bd for
+			// the ready queue"), not IMPLEMENTATION ("uses exactly
+			// these flags in this order"). A future refactor that
+			// swaps `bd --format=json stats` for `bd stats --json`
+			// — same intent, different arg order — should not break
+			// this scenario. The substring floor ("ready", "stats",
+			// "log") is the narrowest observable that distinguishes
+			// the three calls from each other.
+			shells: [
+				{command: "bd", args_contains:  ["stats"]},
+				{command: "bd", args_contains:  ["ready"]},
+				{command: "git", args_contains: ["log"]},
+			]
+
+			// 30s matches scripts/cockpit_dash.py:465 (sleep(30)) —
+			// the cockpit dashboard's established polling floor. Not
+			// 10s (would hammer bd on large projects), not 60s (stale
+			// enough that an operator closing a bead wouldn't see it
+			// reflected before task-switching back). Keep the two
+			// polling surfaces (python cockpit, react sidebar) aligned
+			// so operators develop one mental model of refresh cadence.
+			polling: {
+				interval_seconds: 30
+			}
+
+			// Catches the 3.D regression directly: ink.tsx's
+			// renderSidebar() must not return synchronously. The
+			// setInterval inside useBeads' useEffect is what keeps
+			// the event loop busy; this flag is how the scenario
+			// asserts that invariant without coupling to the
+			// specific mechanism (interval vs. stdin subscription
+			// vs. explicit ink waitUntilExit).
+			stays_alive: true
 		}
 	},
 ]

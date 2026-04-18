@@ -17,10 +17,28 @@ package ui
 
 import "github.com/galeavenworth-personal/kitty-kommander/schema/shared"
 
-// UIScenario specifies one render case for one component. The same
-// scenario body must satisfy both the TUI and web tiers — if the
-// fixtures can only render correctly in one target, the scenario is
-// lying about the component.
+// UIScenario specifies one verification case for one component or hook.
+//
+// Two render modes, gated by `render_mode`:
+//
+//   "fixture" (default) — classic frame-assertion scenario. Component
+//     is rendered under a fixture-injected provider; assertions check
+//     the rendered Ink frame (Tier 2) + the rendered web DOM (Tier 3).
+//     The scenario body must satisfy BOTH the TUI and web tiers — if
+//     the fixtures can only render correctly in one target, the
+//     scenario is lying about the component.
+//
+//   "production" — verification of a production hook's side-effecting
+//     behavior: which shell commands it invokes, how often it polls,
+//     and whether the entry point stays alive after first render.
+//     Generates a vitest test that mocks execFileSync and asserts
+//     the hook's shell calls + polling + stays-alive semantics.
+//     NOT a frame-assertion scenario; no snapshot, no playwright.
+//
+// Field requirements split by mode. Fixture scenarios require
+// `fixtures` + `expected`. Production scenarios require `production`.
+// CUE if-blocks enforce this; a scenario that sets wrong-mode fields
+// fails `cue vet`.
 #UIScenario: {
 	// Lowercase-with-dashes; becomes the TUI test name, the
 	// Playwright test name, and the golden-file basename.
@@ -31,25 +49,107 @@ import "github.com/galeavenworth-personal/kitty-kommander/schema/shared"
 	//   "common"     — frequent non-trivial state
 	//   "edge-case"  — empty, zero, nil — these must NOT crash
 	//   "error"      — explicit failure surface
+	//   "production" — (suggested) production-mode scenarios
 	tags: [...string]
 
 	// The user story. "The operator glances at the Dashboard and
 	// sees …" Drives the scenario's content and the test's docstring.
 	story: string
 
-	// The React component under test, matching the filename in
-	// packages/ui/src/components/ (without extension). Generators
-	// use this to import the right module.
+	// The React component OR hook under test. For fixture-mode
+	// scenarios, matches the filename in packages/ui/src/components/
+	// (without extension). For production-mode scenarios, may name
+	// a hook (e.g. "useBeads") or an entry (e.g. "ink-main-sidebar")
+	// — the generator uses `render_mode` + `component` to decide
+	// which test template to emit.
 	component: string
 
-	// The world the component renders. Same shape the production
-	// hooks (useBeads, useGitLog, useCells, …) return, so the
-	// component doesn't need a separate fixture-adapter.
-	fixtures: shared.#BeadsFixture
+	// Render mode — see the type-level docstring above. Default is
+	// "fixture" to preserve the existing scenario shape; new scenarios
+	// that verify production code paths opt in to "production".
+	render_mode: *"fixture" | "production"
 
-	// What the rendered output must (and must not) contain, plus
-	// snapshot and Playwright assertions for the three tiers.
-	expected: #UIExpected
+	if render_mode == "fixture" {
+		// The world the component renders. Same shape the production
+		// hooks (useBeads, useGitLog, useCells, …) return, so the
+		// component doesn't need a separate fixture-adapter.
+		fixtures: shared.#BeadsFixture
+
+		// What the rendered output must (and must not) contain, plus
+		// snapshot and Playwright assertions for the three tiers.
+		expected: #UIExpected
+	}
+
+	if render_mode == "production" {
+		// Production-path assertions — what the hook shells, how
+		// often it polls, and whether the entry stays alive.
+		production: #ProductionAssertion
+	}
+}
+
+// ProductionAssertion describes the observable behavior of a production
+// hook or entry point. Unlike fixture-mode assertions (which check
+// rendered output), these check side effects and process-lifecycle
+// properties — the kind of thing a mocked-execFileSync vitest test
+// can verify.
+//
+// This type exists because "the Sidebar renders 60% complete" and
+// "useBeads shells `bd --format=json stats`" are structurally different
+// claims: the first is about pixels/characters in a frame, the second
+// is about a syscall trace. Forcing them into one assertion shape
+// (e.g. contains/excludes on the rendered frame) either generates
+// vacuous tests or couples the scenario to implementation details
+// (the hook's log output). Keep them separate.
+#ProductionAssertion: {
+	// Hook or entry under test is read from the enclosing scenario's
+	// `component` field — there is no separate `hook` field here,
+	// because every attempt to set both ended in duplicate strings
+	// (`component: "useBeads"` + `hook: "useBeads"`). If a future
+	// scenario needs to decompose an entry (`component: "ink-main-
+	// sidebar"`) into the hook it mocks, extend this type with a
+	// `mocks_hook` field then — not pre-emptively.
+
+	// Commands the hook must shell during its lifecycle. Each entry
+	// is a predicate over observed execFileSync calls: the generated
+	// test asserts at least one observed call where command == entry.command
+	// AND every string in entry.args_contains appears in the joined
+	// args array. Substring match is deliberately forgiving — the
+	// scenario cares about "did it shell bd for the ready queue"
+	// (args_contains: ["ready"]), not "did it use exactly these
+	// flags" (which couples scenario to implementation).
+	shells: [...{
+		// Exact command binary, e.g. "bd" or "git".
+		command: string
+
+		// Substrings every one of which must appear in args.join(" ").
+		// Empty list means "any invocation of this command counts".
+		args_contains: [...string]
+	}]
+
+	// Polling contract — if set, the generated test advances fake
+	// timers by `interval_seconds` and asserts the shell commands
+	// above are re-invoked. If unset, the hook runs once at mount
+	// and the test asserts exactly one invocation per command.
+	polling?: {
+		interval_seconds: int & >0
+	}
+
+	// Liveness contract — if true, the generated test imports the
+	// entry point (e.g. ink.tsx's main with --sidebar) under a
+	// timeout and asserts the process does not exit synchronously.
+	// If false, no liveness check is generated.
+	//
+	// Specifically designed to catch the 3.D-discovered regression:
+	// renderSidebar() returned without stdin subscription or polling
+	// loop, so the Dashboard tab died immediately under kitty.
+	//
+	// No default — explicit required. A silent default to `false`
+	// would mean a forgetful author drops the 3.D-regression check
+	// without any CUE error; `true` is the common case but not
+	// universal (a pure-read hook-unit scenario with no entry
+	// concern might legitimately set `false`). Make the author
+	// state their intent.
+	stays_alive: bool
 }
 
 // UIExpected bundles every tier's assertions into one block.
