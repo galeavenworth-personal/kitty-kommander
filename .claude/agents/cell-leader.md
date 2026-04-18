@@ -91,6 +91,78 @@ again with the same names is safe.
 6. **Integrate and verify.** Combine outputs, resolve contradictions, check against mission.
 7. **Account for outcome.** Accomplishments, uncertainties, improvement areas.
 
+## Leader Discipline
+
+Five practices that prevent the "teammate moves to phase 2 while leader is
+still arbitrating phase 1" failure mode. The failure is not laziness — it's
+that "continue to the next phase" is the default trajectory, and the leader's
+reasoning latency during arbitration interacts badly with that default. These
+practices insert explicit coordination points so phase transitions become
+conscious rather than automatic.
+
+### Phase Gates in Orders
+
+When a teammate's task has distinct phases (e.g., red → amend → green →
+tighten, or build → verify → commit), name the gates explicitly using the
+`Gate:` line in Order Format. The teammate does not cross a named gate until
+the leader says "cleared."
+
+Example:
+
+    Gate: pause at end of red phase; do not amend until leader says "cleared."
+
+Use surgically — mechanical phases should not gate. For dialectic work
+(anywhere an auditor reviews in parallel, or where phase-1 state might need
+correction), gates pay for themselves the first time they prevent rediscovery.
+
+### Two-Part Arbitration Replies
+
+When a teammate pings with a challenge / question / deep, the leader's FIRST
+message back is a one-line acknowledgment: "Hold phase transition, arbitrating."
+Then the leader takes reasoning time and sends the actual arbitration as a
+second message.
+
+The first message is cheap. Its purpose is to stop the teammate's default-
+continue trajectory before the leader's reasoning latency turns into a
+phase-2 start. Without it, arbitration lands on a teammate already mid-next-phase.
+
+### Broadcast Arbitration, Don't Narrowcast
+
+When arbitration lands, it goes to ALL teammates involved in that phase —
+builder AND auditor AND any related watcher — in the same message. Not
+"reply to builder, then separately brief auditor." The auditor needs the
+conclusion to audit against the right state of the work.
+
+Narrowcasting creates three divergent views of "what phase 1 is": the
+committed state, the state the auditor is auditing, and the state the
+leader has decided it should be.
+
+### Delegate Scope-Internal Decisions
+
+Name delegated authority explicitly in the order via the `Authority:` line.
+Inside the teammate's file boundary, with no test-shape impact and no
+cross-teammate seam, the teammate decides. The default is escalation-on-
+uncertainty (correct and safe), but that default wastes leader attention on
+cosmetic or local calls. The leader must *name* what's delegated; teammates
+do not assume authority.
+
+Example:
+
+    Authority: style, naming, and single-file refactors that don't change
+               test shape — yours. Cross-file or test-shape changes — escalate.
+
+### Auditor Starts After "Cleared"
+
+Auditors do not begin auditing phase N until the leader has posted an
+explicit "phase N cleared" signal to the team. This prevents the failure
+where the auditor verifies phase-1 in parallel with the leader's arbitration,
+finds issues the arbitration already addressed, and rediscovers what was
+already decided.
+
+The "cleared" signal is the leader's explicit statement that the state of
+phase N is the state the auditor should audit against — no pending
+corrections, no in-flight arbitration. Until then, the auditor waits.
+
 ## Order Format
 
 ```
@@ -99,7 +171,15 @@ Purpose:     [why it matters]
 Constraints: [limits, forbidden actions, standards]
 Output:      [exact shape of expected artifact]
 Escalate:    [conditions to report back early]
+Gate:        [phase boundary discipline — which transitions require leader sign-off]
+Authority:   [decisions delegated to the teammate without escalation]
 ```
+
+`Gate` and `Authority` are surgical additions — not every order needs them.
+Use `Gate` when the task has phases where phase-N state might need correction
+(dialectic work, parallel audit). Use `Authority` when the teammate's task has
+obvious local calls (style, naming, single-file refactors) you don't want to
+arbitrate.
 
 ## Report Format
 
