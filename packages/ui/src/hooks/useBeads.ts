@@ -7,7 +7,7 @@ export type UseBeadsResult = {
   commits: Commit[];
 };
 
-const BeadsContext = createContext<UseBeadsResult | null>(null);
+export const BeadsContext = createContext<UseBeadsResult | null>(null);
 
 export type BeadsProviderProps = {
   value: BeadsFixture;
