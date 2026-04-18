@@ -57,6 +57,16 @@ type WindowState struct {
 	Title string            `json:"title,omitempty"`
 	Cmd   []string          `json:"cmd"`
 	Env   map[string]string `json:"env,omitempty"`
+	// PID is the kitty-reported child-process id. Populated by
+	// KittenExec.List from the `kitten @ ls` response; zero-valued on
+	// the mock path (the mock has no child processes and no scenario
+	// asserts a specific PID). Load-bearing for integration-tier
+	// no_change assertions: a destructive reload that closes + respawns
+	// every window produces identical titles and cmds (same session
+	// spec) but fresh PIDs, so PID equality is the only field that
+	// distinguishes "no_change" from "shape-identical after churn."
+	// See schema/cli/types.cue #Expected.kitty_effects docstring.
+	PID int `json:"pid,omitempty"`
 }
 
 // Controller is the surface every kommander subcommand uses to drive

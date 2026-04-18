@@ -178,7 +178,11 @@ func (k *KittenExec) List() (*State, error) {
 		return nil, err
 	}
 	// `kitten @ ls` returns an array of oswindow objects; we flatten
-	// to our State shape by taking the first os-window's tabs.
+	// to our State shape by taking the first os-window's tabs. `pid`
+	// is the child process id kitty associates with the window — we
+	// carry it through so integration-tier scenarios can diff on
+	// (title, cmd, pid) and catch destructive close-and-respawn that
+	// shape-identical (title, cmd)-only diffs would pass silently.
 	var raw []struct {
 		Tabs []struct {
 			ID      int    `json:"id"`
@@ -187,6 +191,7 @@ func (k *KittenExec) List() (*State, error) {
 				Title   string            `json:"title"`
 				Cmdline []string          `json:"cmdline"`
 				Env     map[string]string `json:"env"`
+				PID     int               `json:"pid"`
 			} `json:"windows"`
 		} `json:"tabs"`
 	}
@@ -204,6 +209,7 @@ func (k *KittenExec) List() (*State, error) {
 				Title: w.Title,
 				Cmd:   w.Cmdline,
 				Env:   w.Env,
+				PID:   w.PID,
 			})
 		}
 		s.Tabs = append(s.Tabs, tab)

@@ -15,7 +15,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/galeavenworth-personal/kitty-kommander/internal/cli"
@@ -271,31 +270,15 @@ func deriveSlugForDir(dir string) string {
 	return strings.Trim(b.String(), "-")
 }
 
-// cleanupOrphan terminates a spawned kitty that is about to be
-// abandoned due to a post-spawn failure. SIGTERM first, 500ms grace,
-// SIGKILL if still alive. Logs both actions to stderr so the operator
-// sees the full failure mode. Never returns an error — cleanup is
-// best-effort; the primary failure has already been reported.
+// cleanupOrphan wraps kitty.CleanupOrphan with the "kommander launch:"
+// stderr prefix. The SIGTERM→500ms→SIGKILL logic lives in
+// internal/kitty/cleanup.go so the integration-test harness (and any
+// future caller) can reuse teardown semantics without pulling
+// cmd/kommander into its import graph.
 func cleanupOrphan(cmd *exec.Cmd) {
-	if cmd == nil || cmd.Process == nil {
-		return
-	}
-	pid := cmd.Process.Pid
-	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
-		fmt.Fprintf(os.Stderr, "kommander launch: SIGTERM pid %d: %v\n", pid, err)
-	}
-	// Wait up to 500ms for graceful exit. Poll every 50ms.
-	deadline := time.Now().Add(500 * time.Millisecond)
-	for time.Now().Before(deadline) {
-		if err := syscall.Kill(pid, 0); err != nil {
-			// Process is gone.
-			return
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	if err := syscall.Kill(pid, syscall.SIGKILL); err != nil {
-		fmt.Fprintf(os.Stderr, "kommander launch: SIGKILL pid %d: %v\n", pid, err)
-	}
+	kitty.CleanupOrphan(cmd, func(msg string) {
+		fmt.Fprintf(os.Stderr, "kommander launch: %s\n", msg)
+	})
 }
 
 func isTopHelp(arg string) bool {
