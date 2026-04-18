@@ -113,4 +113,74 @@ scenarios: doctor: [
 			  → stderr suggests 'kommander reload' to fix.
 			"""
 	},
+	{
+		id:   "doctor-healthy-real-titles"
+		tags: ["common", "doctor", "option-a-titled-layout"]
+
+		story: """
+			uib.3.C Option A contract. Production LaunchTab passes
+			--title <CUE-declared title> to `kitten @ launch`; kitty
+			treats that as a persistent override that survives any
+			OSC 0 escape the process emits later (claude's spinner,
+			euporie's process name, bash's cwd escapes). So the state
+			kitty @ ls returns post-launch carries the CUE-declared
+			titles verbatim — not the process-driven runtime strings
+			integrator observed in the pre-3.C repro ("⠂ cell-leader",
+			"euporie-notebook").
+
+			This scenario asserts the full titled layout doctor must
+			validate under Option A: Driver titled "Driver", Notebooks
+			titled "Notebooks", Dashboard/Sidebar titled "Sidebar",
+			Cockpit dynamic. The fixture deliberately declares the
+			title on every non-dynamic window — that IS the shape a
+			real `kitten @ ls` returns after a correct launch, per the
+			live kitty probe (one-shot OSC 0 + 10Hz continuous stream
+			both failed to beat --title).
+
+			Red-before-green: until schema/session/default.cue grows
+			`title:` on its Driver and Notebooks windows, the desired
+			side's winKey is cmd0:<token> while this fixture produces
+			title:<Title> — they never match, drift is reported, test
+			fails. The contract is what pins Option A's implementation
+			in place; dropping --title from LaunchTab silently regresses
+			3.F's real-kitty run while mock-path tests still pass, so
+			3.F's integration scenario is what catches that direction.
+			"""
+
+		setup: kitty_state: {
+			tabs: [
+				{title: "Cockpit", windows: []},
+				{title: "Driver", windows: [
+					{title: "Driver", cmd: ["claude", "--agent",
+						"cell-leader", "--dangerously-skip-permissions"]},
+				]},
+				{title: "Notebooks", windows: [
+					{title: "Notebooks", cmd: ["euporie", "notebook"]},
+				]},
+				{title: "Dashboard", windows: [
+					{title: "Sidebar", cmd: ["kommander-ui", "--sidebar"]},
+				]},
+			]
+		}
+
+		invocation: "kommander doctor"
+
+		expected: {
+			exit_code: 0
+			stdout_contains: ["healthy", "4/4 tabs", "0 drift"]
+			json_paths: [
+				{path: ".status", contains: "healthy"},
+				{path: ".tabs_expected", equals: "4"},
+				{path: ".drift_count", equals: "0"},
+			]
+		}
+
+		help_summary: """
+			Check session health with titled windows:
+			  kommander doctor
+			  → Each desired window's title matches kitty's reported
+			    title (--title override survives process OSC 0 escapes).
+			  → Healthy when titles + tab structure agree with CUE.
+			"""
+	},
 ]

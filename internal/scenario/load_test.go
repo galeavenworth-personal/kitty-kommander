@@ -29,7 +29,7 @@ func TestLoadScenarios(t *testing.T) {
 
 	expected := map[string]int{
 		"launch": 4,
-		"doctor": 2,
+		"doctor": 3,
 		"reload": 2,
 	}
 	for subcmd, want := range expected {
@@ -43,7 +43,7 @@ func TestLoadScenarios(t *testing.T) {
 	// decode worked on all three — not just that the count matched.
 	wantIDs := map[string][]string{
 		"launch": {"cue-config-driven-layout", "launch-basic", "launch-missing-dir", "launch-multi-window-tab"},
-		"doctor": {"doctor-drift-detected", "doctor-healthy"},
+		"doctor": {"doctor-drift-detected", "doctor-healthy", "doctor-healthy-real-titles"},
 		"reload": {"reload-noop", "reload-reconcile"},
 	}
 	for subcmd, ids := range wantIDs {

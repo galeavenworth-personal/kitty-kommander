@@ -74,6 +74,37 @@ func TestScenariosDoctor(t *testing.T) {
 				},
 			},
 		},
+		{
+			ID:          "doctor-healthy-real-titles",
+			Tags:        []string{"common", "doctor", "option-a-titled-layout"},
+			Story:       "uib.3.C Option A contract. Production LaunchTab passes\n--title <CUE-declared title> to `kitten @ launch`; kitty\ntreats that as a persistent override that survives any\nOSC 0 escape the process emits later (claude's spinner,\neuporie's process name, bash's cwd escapes). So the state\nkitty @ ls returns post-launch carries the CUE-declared\ntitles verbatim — not the process-driven runtime strings\nintegrator observed in the pre-3.C repro (\"⠂ cell-leader\",\n\"euporie-notebook\").\n\nThis scenario asserts the full titled layout doctor must\nvalidate under Option A: Driver titled \"Driver\", Notebooks\ntitled \"Notebooks\", Dashboard/Sidebar titled \"Sidebar\",\nCockpit dynamic. The fixture deliberately declares the\ntitle on every non-dynamic window — that IS the shape a\nreal `kitten @ ls` returns after a correct launch, per the\nlive kitty probe (one-shot OSC 0 + 10Hz continuous stream\nboth failed to beat --title).\n\nRed-before-green: until schema/session/default.cue grows\n`title:` on its Driver and Notebooks windows, the desired\nside's winKey is cmd0:<token> while this fixture produces\ntitle:<Title> — they never match, drift is reported, test\nfails. The contract is what pins Option A's implementation\nin place; dropping --title from LaunchTab silently regresses\n3.F's real-kitty run while mock-path tests still pass, so\n3.F's integration scenario is what catches that direction.",
+			Invocation:  "kommander doctor",
+			HelpSummary: "Check session health with titled windows:\n  kommander doctor\n  → Each desired window's title matches kitty's reported\n    title (--title override survives process OSC 0 escapes).\n  → Healthy when titles + tab structure agree with CUE.",
+			Setup: scenario.Setup{
+				KittyState: &scenario.KittyFixture{
+					Tabs: []scenario.KittyTab{
+						{Title: "Cockpit", Windows: []scenario.KittyWindow{}},
+						{Title: "Driver", Windows: []scenario.KittyWindow{
+							{Title: "Driver", Cmd: scenario.StringOrList([]string{"claude", "--agent", "cell-leader", "--dangerously-skip-permissions"})},
+						}},
+						{Title: "Notebooks", Windows: []scenario.KittyWindow{
+							{Title: "Notebooks", Cmd: scenario.StringOrList([]string{"euporie", "notebook"})},
+						}},
+						{Title: "Dashboard", Windows: []scenario.KittyWindow{
+							{Title: "Sidebar", Cmd: scenario.StringOrList([]string{"kommander-ui", "--sidebar"})},
+						}},
+					},
+				},
+			},
+			Expected: scenario.Expected{
+				StdoutContains: []string{"healthy", "4/4 tabs", "0 drift"},
+				JSONPaths: []scenario.JSONPath{
+					{Path: ".status", Contains: "healthy"},
+					{Path: ".tabs_expected", Equals: "4"},
+					{Path: ".drift_count", Equals: "0"},
+				},
+			},
+		},
 	}
 	for _, sc := range cases {
 		sc := sc
