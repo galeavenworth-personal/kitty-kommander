@@ -87,20 +87,48 @@ func Load(rootDir string) (map[string][]Scenario, error) {
 	// `steps` docstring for the trade-off.
 	for subcmd, scs := range result {
 		for _, sc := range scs {
-			hasInv := sc.Invocation != ""
-			hasSteps := len(sc.Steps) > 0
-			switch {
-			case !hasInv && !hasSteps:
-				return nil, fmt.Errorf(
-					"scenario %s/%s: neither `invocation` nor `steps` set — at least one is required",
-					subcmd, sc.ID)
-			case hasInv && hasSteps:
-				return nil, fmt.Errorf(
-					"scenario %s/%s: both `invocation` and `steps` set — mutually exclusive (steps chain requires omitting top-level invocation)",
-					subcmd, sc.ID)
+			if err := validateScenario(subcmd, sc); err != nil {
+				return nil, err
 			}
 		}
 	}
 
 	return result, nil
+}
+
+// validateScenario enforces cross-field invariants CUE cannot express
+// cleanly OR wants belt-and-braces on. Separated from Load so
+// load_test.go can exercise each branch directly without round-tripping
+// through the CUE loader.
+//
+//  1. invocation/steps mutex: #Scenario lets `invocation` default to ""
+//     so steps-shaped scenarios can omit it; both empty (nothing to
+//     execute) or both set (ambiguous) are errors. Lives here rather
+//     than as a CUE disjunction to keep #Scenario unified across files.
+//
+//  2. run_modes non-empty: CUE's `[_, ...T]` vet-time guard rejects
+//     empty literals, but Go-side callers building Scenario values
+//     directly (scenariogen tests, future tooling) bypass vet. Empty
+//     RunModes after Load would silently make the scenario invisible
+//     to every mode-filtered generator branch — the upz-class silent-
+//     skip hazard.
+func validateScenario(subcmd string, sc Scenario) error {
+	hasInv := sc.Invocation != ""
+	hasSteps := len(sc.Steps) > 0
+	switch {
+	case !hasInv && !hasSteps:
+		return fmt.Errorf(
+			"scenario %s/%s: neither `invocation` nor `steps` set — at least one is required",
+			subcmd, sc.ID)
+	case hasInv && hasSteps:
+		return fmt.Errorf(
+			"scenario %s/%s: both `invocation` and `steps` set — mutually exclusive (steps chain requires omitting top-level invocation)",
+			subcmd, sc.ID)
+	}
+	if len(sc.RunModes) == 0 {
+		return fmt.Errorf(
+			"scenario %s/%s: run_modes is empty — must declare at least one of [\"mock\", \"real_kitty\"]",
+			subcmd, sc.ID)
+	}
+	return nil
 }

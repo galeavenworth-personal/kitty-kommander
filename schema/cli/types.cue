@@ -102,7 +102,19 @@ import "github.com/galeavenworth-personal/kitty-kommander/schema/shared"
 	// distinct from packages/ui/schema's "render_mode" (React render
 	// path axis) — two orthogonal mode concepts, distinct names to
 	// prevent cross-package confusion.
-	run_modes: [...("mock" | "real_kitty")] | *["mock"]
+	//
+	// Required field with no default. The `[_, ...T]` core-syntax form
+	// enforces non-empty at vet time: the leading `_` says "at least
+	// one element required," and the open-list tail `...T` constrains
+	// every remaining element to the disjunction. Equivalent in effect
+	// to `list.MinItems(1)` here, but the core-syntax form avoids the
+	// `list` import. Authors must pick a tier explicitly — the prior
+	// `| *["mock"]` default silently dropped scenarios into mock-only
+	// coverage, the exact silent-skip hazard that produced kitty-
+	// kommander-upz. Loader (internal/scenario/load.go) re-checks
+	// non-empty as belt-and-braces since the decoder path could
+	// otherwise accept a nil slice from a go caller, bypassing CUE vet.
+	run_modes: [_, ...("mock" | "real_kitty")]
 }
 
 // Step is one invocation in a multi-step scenario. Fields mirror the

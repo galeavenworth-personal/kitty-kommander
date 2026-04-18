@@ -7,7 +7,8 @@ package cli
 scenarios: launch: [
 	{
 		id:   "launch-basic"
-		tags: ["basic", "launch"]
+		tags:      ["basic", "launch"]
+		run_modes: ["mock"]
 
 		story: """
 			An operator wants to launch a kitty-kommander instance for
@@ -51,7 +52,8 @@ scenarios: launch: [
 	},
 	{
 		id:   "launch-missing-dir"
-		tags: ["error", "launch", "validation"]
+		tags:      ["error", "launch", "validation"]
+		run_modes: ["mock"]
 
 		story: """
 			An operator invokes 'kommander launch' with a directory that
@@ -83,7 +85,8 @@ scenarios: launch: [
 	},
 	{
 		id:   "cue-config-driven-layout"
-		tags: ["common", "launch", "config"]
+		tags:      ["common", "launch", "config"]
+		run_modes: ["mock"]
 
 		story: """
 			An operator wants a non-default session layout for a
@@ -164,7 +167,8 @@ scenarios: launch: [
 	},
 	{
 		id:   "launch-multi-window-tab"
-		tags: ["common", "launch", "config", "multi-window"]
+		tags:      ["common", "launch", "config", "multi-window"]
+		run_modes: ["mock"]
 
 		story: """
 			An operator defines a tab with several windows in their

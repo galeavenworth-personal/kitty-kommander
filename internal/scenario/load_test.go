@@ -56,4 +56,54 @@ func TestLoadScenarios(t *testing.T) {
 			}
 		}
 	}
+
+	// Every loaded scenario must have non-empty RunModes. The CUE
+	// schema enforces this via [_, ...T], the loader re-checks it,
+	// and this test pins the invariant from the consumer side: if
+	// a future schema refactor reintroduces a default (say, during
+	// a "reduce boilerplate" cleanup), this test catches it before
+	// the silent-skip hazard reappears.
+	for subcmd, scs := range scenarios {
+		for _, sc := range scs {
+			if len(sc.RunModes) == 0 {
+				t.Errorf("scenario %s/%s: RunModes is empty after load",
+					subcmd, sc.ID)
+			}
+		}
+	}
+}
+
+// TestLoadRejectsEmptyRunModes confirms the loader's belt-and-braces
+// check fires when a Scenario struct with empty RunModes reaches the
+// post-decode validation loop. The CUE vet layer already rejects this,
+// but the loader defends the Go-side boundary for callers who construct
+// Scenario values directly (scenariogen tests, future tools).
+//
+// Strategy: build the minimum Scenario that would otherwise pass (ID,
+// invocation, expected are present; RunModes is nil); run it through
+// the same validation loop the loader uses. If we ever refactor that
+// loop into a method on Scenario, this test pins the behavior.
+func TestLoadRejectsEmptyRunModes(t *testing.T) {
+	sc := Scenario{
+		ID:         "probe",
+		Invocation: "kommander launch /tmp/x",
+		Expected:   Expected{ExitCode: 0},
+		RunModes:   nil,
+	}
+	err := validateScenario("launch", sc)
+	if err == nil {
+		t.Fatal("expected error for empty RunModes, got nil")
+	}
+	if got := err.Error(); !contains(got, "run_modes is empty") {
+		t.Errorf("error %q does not mention run_modes", got)
+	}
+}
+
+func contains(s, sub string) bool {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
 }

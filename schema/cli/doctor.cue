@@ -14,7 +14,8 @@ package cli
 scenarios: doctor: [
 	{
 		id:   "doctor-healthy"
-		tags: ["basic", "doctor"]
+		tags:      ["basic", "doctor"]
+		run_modes: ["mock"]
 
 		story: """
 			After launching, the operator runs doctor to verify that
@@ -71,7 +72,8 @@ scenarios: doctor: [
 	},
 	{
 		id:   "doctor-drift-detected"
-		tags: ["common", "doctor"]
+		tags:      ["common", "doctor"]
+		run_modes: ["mock"]
 
 		story: """
 			A Dashboard window crashed. The operator runs doctor and
@@ -127,7 +129,8 @@ scenarios: doctor: [
 	},
 	{
 		id:   "doctor-healthy-real-titles"
-		tags: ["common", "doctor", "option-a-titled-layout"]
+		tags:      ["common", "doctor", "option-a-titled-layout"]
+		run_modes: ["mock"]
 
 		story: """
 			uib.3.C Option A contract. Production LaunchTab passes

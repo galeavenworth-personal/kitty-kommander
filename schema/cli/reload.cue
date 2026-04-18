@@ -17,7 +17,8 @@ package cli
 scenarios: reload: [
 	{
 		id:   "reload-reconcile"
-		tags: ["basic", "reload"]
+		tags:      ["basic", "reload"]
+		run_modes: ["mock"]
 
 		story: """
 			After doctor reports drift (the Sidebar window died and
@@ -69,7 +70,8 @@ scenarios: reload: [
 	},
 	{
 		id:   "reload-noop"
-		tags: ["basic", "reload", "idempotence"]
+		tags:      ["basic", "reload", "idempotence"]
+		run_modes: ["mock"]
 
 		story: """
 			The operator runs reload on a session that's already
