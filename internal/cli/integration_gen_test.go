@@ -21,9 +21,9 @@ func TestScenariosIntegration(t *testing.T) {
 			Invocation: "",
 			Steps: []scenario.Step{
 				{
-					Invocation: "kommander launch /tmp/kommander-integration-test",
+					Invocation: "kommander launch /tmp/${BASENAME}",
 					Expected: scenario.Expected{
-						StdoutContains: []string{"session: cockpit-kommander-integration-test", "socket: unix:/tmp/kitty-kommander-kommander-integration-test"},
+						StdoutContains: []string{"session: cockpit-${BASENAME}", "socket: unix:/tmp/kitty-kommander-${BASENAME}"},
 					},
 				},
 				{

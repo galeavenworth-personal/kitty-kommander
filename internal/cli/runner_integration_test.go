@@ -24,12 +24,17 @@ import (
 //
 //   - D1: no pre-spawn. The runner does NOT call kitty.SpawnKitty
 //     itself. The scenario's first step is "kommander launch <dir>",
-//     which spawns kitty on a deterministic socket derived from the
-//     project dir basename (see cmd/kommander/main.go buildController).
-//     The scenario pins "socket: unix:/tmp/kitty-kommander-kommander-
-//     integration-test" in stdout_contains, so the socket basename is
-//     contract-required to be deterministic. A t.TempDir-basename
-//     socket path would break that stdout assertion.
+//     which spawns kitty on a socket derived from the project dir
+//     basename (see cmd/kommander/main.go buildController). Per
+//     kitty-kommander-iez, the scenario uses a ${BASENAME} token
+//     rather than a fixed literal: the runner picks a per-invocation
+//     unique basename (uniqueIntegrationBasename) and expands the
+//     token in both the invocation and the stdout assertions via
+//     expandBasenamesInSteps BEFORE running any step. That lets
+//     `go test -tags=integration -count=N` or a parallel matrix
+//     shard produce distinct /tmp/kitty-kommander-<basename> sockets
+//     per test invocation without breaking the literal stdout
+//     assertion.
 //
 //   - D2: subprocess via TestMain-prebuilt binary. Every step shells
 //     out to the kommander binary compiled by TestMainIntegration
@@ -49,20 +54,27 @@ import (
 //     no-op. See schema/cli/types.cue #Expected.kitty_effects
 //     docstring for the real-kitty semantic.
 //
-//   - D4: pre-sweep + kitten quit teardown. The deterministic socket
-//     path means a prior crashed run can leave a stale socket file,
-//     which would make kommander launch's "socket exists" pre-flight
-//     abort the current test. The runner sweeps the deterministic
-//     path on startup (before calling the binary) so consecutive
-//     test runs recover cleanly. Teardown uses `kitten @ --to
-//     <socket> quit` (graceful kitty shutdown, the kitten way) plus
-//     os.Remove on the socket file, rather than signal-killing the
-//     kitty pid — we do not own the kitty *exec.Cmd here (D1); only
-//     the kommander subprocess's *exec.Cmd, which has already exited
-//     by the time each step returns.
+//   - D4: pre-sweep + kitten quit teardown. Even with per-invocation
+//     basenames (iez fix), a prior crashed run at the SAME basename
+//     (same pid + same nanosecond clock reading — vanishingly rare but
+//     possible) could leave a stale socket file, which would make
+//     kommander launch's "socket exists" pre-flight abort the current
+//     test. The runner sweeps the computed socket path on startup
+//     (before calling the binary) so that pathological case recovers
+//     cleanly; in the common case the path did not exist and the
+//     sweep is a no-op. Teardown uses `kitten @ --to <socket>
+//     close-tab --match all` (triggers kitty's natural shutdown, the
+//     kitten way — kitty 0.43 has no `@ quit`) plus os.Remove on the
+//     socket file, rather than signal-killing the kitty pid — we do
+//     not own the kitty *exec.Cmd here (D1); only the kommander
+//     subprocess's *exec.Cmd, which has already exited by the time
+//     each step returns.
 //
-// Parallelism: no t.Parallel(). The deterministic socket path allows
-// only one live kitty at a time; the serialization is inherent.
+// Parallelism: no t.Parallel() inside a single RunIntegrationScenario
+// because the multi-step chain mutates one shared kitty session, but
+// concurrent *invocations* (matrix sharding, -count=N from separate
+// go test processes) are safe because every invocation derives a
+// distinct basename + socket path. See kitty-kommander-iez.
 func RunIntegrationScenario(t *testing.T, sc scenario.Scenario) {
 	t.Helper()
 	RequireKitty(t)
@@ -75,14 +87,21 @@ func RunIntegrationScenario(t *testing.T, sc scenario.Scenario) {
 		t.Fatalf("integration scenario %q has no steps; real_kitty single-invocation not supported yet", sc.ID)
 	}
 
-	// Pre-sweep the deterministic socket path. A prior crashed run
-	// can leave the socket file behind, which would make kommander
-	// launch's "socket exists" pre-flight abort. We best-effort
-	// quit any live kitty bound to the socket first (so we're not
-	// ripping the file out from under a healthy kitty on a contended
-	// run), then remove the file unconditionally.
-	const sockPath = "/tmp/kitty-kommander-kommander-integration-test"
-	const sockURI = "unix:" + sockPath
+	// Per-invocation unique basename (kitty-kommander-iez). Everything
+	// downstream — the project-dir path-arg materialized into tmpRoot,
+	// the slug kommander derives from that basename, the kitty socket
+	// path — is a function of this one value. The scenario carries
+	// ${BASENAME} tokens; expandBasenamesInSteps rewrites them to the
+	// generated literal before any step runs.
+	basename := uniqueIntegrationBasename()
+	expandBasenamesInSteps(sc.Steps, basename)
+	sockPath := "/tmp/kitty-kommander-" + basename
+	sockURI := "unix:" + sockPath
+
+	// Pre-sweep the socket path. Near-zero chance of a live socket at
+	// this path (basename is unique per invocation), but a prior
+	// crashed run at the identical basename could leave a stale file
+	// behind — defensive cleanup so the pathological case recovers.
 	preSweepSocket(t, sockPath, sockURI)
 
 	// Per-scenario tmp root for path-shaped args. basename preserved so
@@ -117,10 +136,73 @@ func RunIntegrationScenario(t *testing.T, sc scenario.Scenario) {
 	}
 }
 
+// uniqueIntegrationBasename returns a slug-safe string unique to this
+// test invocation. Shape: kommander-it-<pid>-<nanosec>. All three
+// components are lowercase + alnum + hyphen, matching deriveSlug's
+// allowed charset (internal/cli/launch.go), so the kommander binary's
+// slug derivation produces the basename verbatim.
+//
+// pid defends against two separate test binaries (matrix shards, CI
+// parallelism) colliding; the monotonic nanosecond clock defends
+// against two back-to-back calls within one process getting the same
+// value. UnixNano is monotonically non-decreasing on Linux — two
+// successive calls within the same nanosecond would collide, but
+// Go's runtime timer resolution and the work between calls (pre-
+// sweep, TempDir, subprocess spawn) make that effectively impossible.
+func uniqueIntegrationBasename() string {
+	return fmt.Sprintf("kommander-it-%d-%d", os.Getpid(), time.Now().UnixNano())
+}
+
+// expandBasename replaces every ${BASENAME} token in s with basename.
+// Pure function, package-internal, exercised directly by
+// TestExpandBasenameSubstitutes in runner_integration_defensive_test.go.
+//
+// Substitution runs against the runner's inputs — step invocations,
+// step Expected.StdoutContains — NOT against production output
+// (kommander's stdout). If kommander emits the literal string
+// "${BASENAME}" somewhere (it doesn't, and shouldn't), the runner
+// would compare against an expanded assertion and fail, which is the
+// correct direction: production code emitting a template placeholder
+// is a bug.
+func expandBasename(s, basename string) string {
+	return strings.ReplaceAll(s, "${BASENAME}", basename)
+}
+
+// expandBasenamesInSteps mutates every Step's Invocation and
+// Expected.Stdout/Stderr substring assertions to replace ${BASENAME}
+// with basename. Mutates in place; scenarios are value-copied by the
+// generator's `sc := sc` so this does not leak across test runs.
+//
+// Does NOT touch the scenario-level Expected (sc.Expected.*), which
+// in 3.F carries only FinalKittyState; final_kitty_state has no
+// string assertions that would contain a basename today, and
+// extending the substitution surface there is a cheap follow-up if a
+// future scenario needs it.
+func expandBasenamesInSteps(steps []scenario.Step, basename string) {
+	for i := range steps {
+		steps[i].Invocation = expandBasename(steps[i].Invocation, basename)
+		steps[i].Expected.StdoutContains = expandBasenameSlice(steps[i].Expected.StdoutContains, basename)
+		steps[i].Expected.StdoutExcludes = expandBasenameSlice(steps[i].Expected.StdoutExcludes, basename)
+		steps[i].Expected.StderrContains = expandBasenameSlice(steps[i].Expected.StderrContains, basename)
+		steps[i].Expected.StderrExcludes = expandBasenameSlice(steps[i].Expected.StderrExcludes, basename)
+	}
+}
+
+func expandBasenameSlice(ss []string, basename string) []string {
+	if len(ss) == 0 {
+		return ss
+	}
+	out := make([]string, len(ss))
+	for i, s := range ss {
+		out[i] = expandBasename(s, basename)
+	}
+	return out
+}
+
 // preSweepSocket best-effort closes any kitty already bound to the
-// deterministic socket (from a prior crashed run) and removes the
-// socket file. Must leave the path clean for kommander launch's
-// "socket exists" pre-flight to pass.
+// socket (from a prior crashed run at an identical basename) and
+// removes the socket file. Must leave the path clean for kommander
+// launch's "socket exists" pre-flight to pass.
 //
 // Teardown primitive is `kitten @ close-tab --match all` — kitty
 // 0.43 has no `@ quit` command, and closing every tab triggers

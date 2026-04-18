@@ -196,3 +196,139 @@ func TestExpectsNoChangeFalseOnMixed(t *testing.T) {
 		t.Fatal("expectsNoChange returned true for mixed [no_change, tab_created]; non-exclusive marker silently ignored")
 	}
 }
+
+// TestUniqueIntegrationBasenameDistinct pins kitty-kommander-iez's
+// load-bearing invariant: two successive calls to
+// uniqueIntegrationBasename MUST return different slugs. This is what
+// lets `go test -tags=integration -count=N` (and CI matrix shards)
+// derive non-colliding /tmp/kitty-kommander-<basename> sockets.
+//
+// Without this test, a refactor that stripped the nanosecond clock
+// (e.g. "keep only pid for stability") would silently reintroduce the
+// race: every call within the same pid returns the same basename, two
+// concurrent go test invocations from one CI worker collide on
+// /tmp/kitty-kommander-kommander-it-<pid>, first invocation's pre-
+// sweep rips the socket out from under the second.
+//
+// Tamper-then-revert evidence: replacing the format string with just
+// "kommander-it-%d" (pid-only) makes both calls return the same slug;
+// this test reds with "uniqueIntegrationBasename returned identical
+// slugs". Reverted to pid+nanosec; test greens.
+func TestUniqueIntegrationBasenameDistinct(t *testing.T) {
+	a := uniqueIntegrationBasename()
+	b := uniqueIntegrationBasename()
+	if a == b {
+		t.Fatalf("uniqueIntegrationBasename returned identical slugs on back-to-back calls: %q (race mitigation for iez would silently collide on parallel invocations)", a)
+	}
+	// Both must be slug-safe so deriveSlug(basename) == basename and
+	// the kommander-derived socket path is predictable from our side.
+	for _, s := range []string{a, b} {
+		for _, r := range s {
+			valid := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-'
+			if !valid {
+				t.Errorf("basename %q contains non-slug-safe rune %q; deriveSlug will mangle it", s, r)
+			}
+		}
+		if !strings.HasPrefix(s, "kommander-it-") {
+			t.Errorf("basename %q missing kommander-it- prefix (readability / greppability)", s)
+		}
+	}
+}
+
+// TestExpandBasenameSubstitutes pins the substitution contract. Every
+// ${BASENAME} token in the input string is replaced with the supplied
+// basename; other text is untouched. The runner calls this on step
+// Invocation and on every string in Expected.Stdout/Stderr before
+// running a step — without substitution, the scenario's literal
+// ${BASENAME} string would fail the stdout-contains check against
+// kommander's actual per-run stdout.
+//
+// Tamper-then-revert evidence: swapping ReplaceAll for Replace with
+// limit 1 makes the "twice-in-one-string" sub-test red ("session:
+// cockpit-xyz socket: unix:/tmp/kitty-kommander-${BASENAME}");
+// reverting greens. Replacing the sentinel with something else (say
+// "$BASENAME" without braces) leaves the input unchanged — the
+// "stdout-contains-assertion-shape" sub-test reds. Both reverted.
+func TestExpandBasenameSubstitutes(t *testing.T) {
+	t.Run("single token", func(t *testing.T) {
+		got := expandBasename("kommander launch /tmp/${BASENAME}", "kommander-it-abc")
+		want := "kommander launch /tmp/kommander-it-abc"
+		if got != want {
+			t.Errorf("expandBasename single-token: got %q, want %q", got, want)
+		}
+	})
+	t.Run("twice in one string", func(t *testing.T) {
+		got := expandBasename("session: cockpit-${BASENAME} socket: unix:/tmp/kitty-kommander-${BASENAME}", "xyz")
+		want := "session: cockpit-xyz socket: unix:/tmp/kitty-kommander-xyz"
+		if got != want {
+			t.Errorf("expandBasename two-tokens: got %q, want %q", got, want)
+		}
+	})
+	t.Run("no token leaves input unchanged", func(t *testing.T) {
+		in := "healthy / 4/4 tabs / 0 drift"
+		if got := expandBasename(in, "xyz"); got != in {
+			t.Errorf("expandBasename no-token: got %q, want %q (assertions without the placeholder must pass through verbatim)", got, in)
+		}
+	})
+	t.Run("stdout-contains-assertion-shape", func(t *testing.T) {
+		// This is the exact shape of the stdout assertion that pins
+		// kitty-kommander-iez's fix — if expandBasename stops doing
+		// any substitution, the runner would compare kommander's
+		// actual stdout against the literal "${BASENAME}" string and
+		// every integration run would red immediately.
+		got := expandBasename("socket: unix:/tmp/kitty-kommander-${BASENAME}", "kommander-it-42-999")
+		want := "socket: unix:/tmp/kitty-kommander-kommander-it-42-999"
+		if got != want {
+			t.Errorf("expandBasename stdout-shape: got %q, want %q", got, want)
+		}
+	})
+}
+
+// TestExpandBasenamesInStepsMutates pins the driver that wires
+// expandBasename into the RunIntegrationScenario flow. A step whose
+// Invocation and Stdout/Stderr substring lists carry ${BASENAME} must
+// be rewritten in place so runIntegrationStep sees the expanded
+// strings. Without this, the helpers would exist but the runner would
+// still compare literal ${BASENAME} against production stdout.
+//
+// Tamper-then-revert evidence: deleting the StdoutContains line from
+// expandBasenamesInSteps reds the "stdout-contains" sub-assertion
+// below; reverting greens. Deleting the Invocation line reds the
+// "invocation-rewritten" sub-assertion; reverting greens.
+func TestExpandBasenamesInStepsMutates(t *testing.T) {
+	steps := []scenario.Step{
+		{
+			Invocation: "kommander launch /tmp/${BASENAME}",
+			Expected: scenario.Expected{
+				StdoutContains: []string{"session: cockpit-${BASENAME}", "no-token-here"},
+				StderrContains: []string{"error: ${BASENAME}"},
+			},
+		},
+		{
+			Invocation: "kommander doctor",
+			Expected: scenario.Expected{
+				StdoutContains: []string{"healthy"},
+			},
+		},
+	}
+	expandBasenamesInSteps(steps, "test-slug")
+
+	if steps[0].Invocation != "kommander launch /tmp/test-slug" {
+		t.Errorf("invocation-rewritten: got %q", steps[0].Invocation)
+	}
+	if steps[0].Expected.StdoutContains[0] != "session: cockpit-test-slug" {
+		t.Errorf("stdout-contains: got %v", steps[0].Expected.StdoutContains)
+	}
+	if steps[0].Expected.StdoutContains[1] != "no-token-here" {
+		t.Errorf("non-token stdout entry was mangled: got %q", steps[0].Expected.StdoutContains[1])
+	}
+	if steps[0].Expected.StderrContains[0] != "error: test-slug" {
+		t.Errorf("stderr-contains: got %v", steps[0].Expected.StderrContains)
+	}
+	if steps[1].Invocation != "kommander doctor" {
+		t.Errorf("second step invocation should be untouched: got %q", steps[1].Invocation)
+	}
+	if steps[1].Expected.StdoutContains[0] != "healthy" {
+		t.Errorf("second step non-token stdout was mangled: got %v", steps[1].Expected.StdoutContains)
+	}
+}

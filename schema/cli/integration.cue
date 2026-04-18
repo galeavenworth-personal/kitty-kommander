@@ -54,19 +54,30 @@ scenarios: integration: [
 
 		steps: [
 			{
-				// Launch with a placeholder project dir. The test
-				// harness rewrites path-shaped args to a per-test
-				// t.TempDir before invocation, same convention as
-				// materializeDirs for mock scenarios. The basename
-				// ("kommander-integration-test") is what deriveSlug
-				// maps to the session name and socket path stdout
-				// assertions rely on.
-				invocation: "kommander launch /tmp/kommander-integration-test"
+				// Launch with a placeholder project dir. The ${BASENAME}
+				// token is substituted at step-time by the integration
+				// runner (runner_integration_test.go :: expandBasename)
+				// with a per-test-invocation slug of shape
+				// kommander-it-<pid>-<nanosec>. The runner rewrites
+				// path-shaped args through the same materializeDirs
+				// convention as mock scenarios AFTER substitution, so
+				// the derived project-dir basename (and therefore
+				// deriveSlug → session name → socket path) carries the
+				// unique suffix. stdout_contains below uses the same
+				// token so the literal assertion survives substitution.
+				//
+				// Per-test uniqueness fixes kitty-kommander-iez: a
+				// literal basename (pre-this-change
+				// "kommander-integration-test") collides under
+				// `go test -tags=integration -count=N` or CI matrix
+				// sharding because both runs pre-sweep and bind the
+				// same /tmp/kitty-kommander-<literal> socket.
+				invocation: "kommander launch /tmp/${BASENAME}"
 				expected: {
 					exit_code: 0
 					stdout_contains: [
-						"session: cockpit-kommander-integration-test",
-						"socket: unix:/tmp/kitty-kommander-kommander-integration-test",
+						"session: cockpit-${BASENAME}",
+						"socket: unix:/tmp/kitty-kommander-${BASENAME}",
 					]
 				}
 			},
