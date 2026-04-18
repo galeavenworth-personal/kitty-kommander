@@ -104,7 +104,7 @@ describe("ProductionBeadsProvider — sidebar-reads-real-beads-state", () => {
     }
   });
 
-  it("re-shells every scenario-declared command after polling.interval_seconds", async () => {
+  it("pins polling cadence to scenario.polling.interval_seconds (boundary-advance probe)", async () => {
     const { ProductionBeadsProvider } = await import("../useBeadsProduction.js");
 
     render(
@@ -117,7 +117,22 @@ describe("ProductionBeadsProvider — sidebar-reads-real-beads-state", () => {
     const mountCallCount = execFileSyncMock.mock.calls.length;
     expect(mountCallCount).toBeGreaterThan(0);
 
-    await vi.advanceTimersByTimeAsync(intervalMs);
+    // BOUNDARY PROBE: advance to exactly 1ms BEFORE the first tick.
+    // A correct hook schedules setInterval(fn, intervalMs), so no tick
+    // has fired yet; call count must still equal mountCallCount. A hook
+    // that hardcoded setInterval(fn, 1) — ignoring the prop entirely —
+    // would have fired ~intervalMs-1 ticks by now, and this assertion
+    // would red. This is the auditor-probe-defeating check: without it,
+    // the test only proves "calls grew" and passes even when cadence
+    // is wrong.
+    await vi.advanceTimersByTimeAsync(intervalMs - 1);
+    expect(
+      execFileSyncMock.mock.calls.length,
+      `expected no ticks before t=${intervalMs}ms; got ${execFileSyncMock.mock.calls.length - mountCallCount} extra calls — hook may be ignoring intervalMs prop`
+    ).toBe(mountCallCount);
+
+    // Cross the boundary by 1ms — the tick fires exactly here.
+    await vi.advanceTimersByTimeAsync(1);
 
     const callsAfterPoll = recordedCalls();
     expect(callsAfterPoll.length).toBeGreaterThan(mountCallCount);
@@ -137,9 +152,18 @@ describe("ProductionBeadsProvider — sidebar-reads-real-beads-state", () => {
 });
 
 describe("ProductionBeadsProvider — shell-failure behavior", () => {
-  const intervalMs =
-    (SIDEBAR_READS_REAL_BEADS_STATE_PRODUCTION.polling?.interval_seconds ??
-      30) * 1000;
+  // Mirror the loud-throw style of the sidebar-reads-real-beads-state block
+  // above. A `?? 30` silent fallback would let the test keep passing if
+  // someone dropped polling from the scenario — that's the opposite of
+  // what scenario-driven tests should do.
+  const failureIntervalSeconds =
+    SIDEBAR_READS_REAL_BEADS_STATE_PRODUCTION.polling?.interval_seconds;
+  if (failureIntervalSeconds === undefined) {
+    throw new Error(
+      "polling.interval_seconds required for shell-failure tests"
+    );
+  }
+  const intervalMs = failureIntervalSeconds * 1000;
 
   let stderrWrites: string[];
   const originalStderrWrite = process.stderr.write.bind(process.stderr);
